@@ -14,3 +14,4 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 zavora-slide = { path = "../zavora-slide", version = "0.1.0" }
+wasm-bindgen = "0.2"

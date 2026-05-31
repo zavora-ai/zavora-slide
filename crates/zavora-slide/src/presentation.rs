@@ -43,8 +43,16 @@ impl Presentation {
     /// re-saved deck would contain only the extracted text. A faithful
     /// round-trip is future work (Requirement 3).
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::open_from_package(OpcPackage::open(path)?)
+    }
+
+    /// Open from in-memory `.pptx` bytes (text-only; see [`Presentation::open`]).
+    pub fn open_from_bytes(bytes: &[u8]) -> Result<Self> {
+        Self::open_from_package(OpcPackage::from_reader(std::io::Cursor::new(bytes.to_vec()))?)
+    }
+
+    fn open_from_package(pkg: OpcPackage) -> Result<Self> {
         use zavora_slide_oxml::TextBody;
-        let pkg = OpcPackage::open(path)?;
         let pres_xml = pkg
             .get_part("/ppt/presentation.xml")
             .ok_or_else(|| SlideError::NotFound("presentation.xml".into()))?;
@@ -63,7 +71,6 @@ impl Presentation {
             if let Some(part) = target.as_deref().and_then(|t| pkg.get_part(t)) {
                 let body = TextBody::from_xml(part)?;
                 if !body.paragraphs.is_empty() {
-                    // Put extracted paragraphs into a body placeholder.
                     let bullets: Vec<crate::slide::Bullet> = body
                         .paragraphs
                         .iter()
