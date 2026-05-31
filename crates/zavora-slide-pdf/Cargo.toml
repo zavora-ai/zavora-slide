@@ -11,6 +11,10 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+default = ["bundled-fonts"]
+bundled-fonts = []
+
 [dependencies]
 zavora-slide-layout = { workspace = true }
 zavora-slide-render = { workspace = true }

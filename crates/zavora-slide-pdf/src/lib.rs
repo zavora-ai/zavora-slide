@@ -44,7 +44,14 @@ pub fn scenes_to_pdf(scenes: &[Scene]) -> Result<Vec<u8>, PdfError> {
 
         let svg = zavora_slide_render::scene_to_svg(scene, SVG_W);
         let mut opt = usvg::Options::default();
-        opt.fontdb_mut().load_system_fonts();
+        let db = opt.fontdb_mut();
+        db.load_system_fonts();
+        #[cfg(feature = "bundled-fonts")]
+        {
+            db.load_font_data(include_bytes!("../fonts/LiberationSans-Regular.ttf").to_vec());
+            db.load_font_data(include_bytes!("../fonts/LiberationSans-Bold.ttf").to_vec());
+            db.set_sans_serif_family("Liberation Sans");
+        }
         let tree = usvg::Tree::from_str(&svg, &opt).map_err(|e| PdfError::Svg(e.to_string()))?;
         let (chunk, root) =
             svg2pdf::to_chunk(&tree, svg2pdf::ConversionOptions::default()).map_err(|_| PdfError::Convert)?;

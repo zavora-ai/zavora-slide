@@ -11,6 +11,11 @@ homepage.workspace = true
 keywords.workspace = true
 categories.workspace = true
 
+[features]
+default = ["bundled-fonts"]
+## Embed LiberationSans (Arial-metric-compatible) so PNG renders on fontless hosts.
+bundled-fonts = []
+
 [dependencies]
 zavora-slide-layout = { workspace = true }
 thiserror = { workspace = true }

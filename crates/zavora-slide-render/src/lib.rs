@@ -86,13 +86,31 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
 /// Render a scene to PNG bytes at the given pixel width (via resvg).
 pub fn scene_to_png(scene: &Scene, target_px_w: u32) -> Result<Vec<u8>, RenderError> {
     let svg = scene_to_svg(scene, target_px_w);
-    let mut opt = resvg::usvg::Options::default();
-    opt.fontdb_mut().load_system_fonts();
+    let opt = build_options();
     let tree = resvg::usvg::Tree::from_str(&svg, &opt).map_err(|e| RenderError::Svg(e.to_string()))?;
     let size = tree.size().to_int_size();
     let mut pixmap = resvg::tiny_skia::Pixmap::new(size.width(), size.height()).ok_or(RenderError::Raster)?;
     resvg::render(&tree, resvg::tiny_skia::Transform::identity(), &mut pixmap.as_mut());
     pixmap.encode_png().map_err(|_| RenderError::Raster)
+}
+
+/// usvg options with a font database. With `bundled-fonts`, LiberationSans
+/// (Arial-metric-compatible) is embedded and set as the default sans-serif, so
+/// text rasterizes even on hosts with no installed fonts. System fonts are also
+/// loaded so named families resolve when available.
+fn build_options() -> resvg::usvg::Options<'static> {
+    let mut opt = resvg::usvg::Options::default();
+    let db = opt.fontdb_mut();
+    db.load_system_fonts();
+    #[cfg(feature = "bundled-fonts")]
+    {
+        db.load_font_data(include_bytes!("../fonts/LiberationSans-Regular.ttf").to_vec());
+        db.load_font_data(include_bytes!("../fonts/LiberationSans-Bold.ttf").to_vec());
+        // Default sans-serif → the bundled face, so text rasterizes even with no
+        // system fonts. (Named families still resolve from system fonts above.)
+        db.set_sans_serif_family("Liberation Sans");
+    }
+    opt
 }
 
 #[cfg(test)]
@@ -130,5 +148,30 @@ mod tests {
         let png = scene_to_png(&sample(), 640).unwrap();
         assert!(png.len() > 100);
         assert_eq!(&png[1..4], b"PNG");
+    }
+
+    #[test]
+    fn png_actually_renders_dark_text_pixels() {
+        // Decode the PNG and confirm it contains dark pixels (text/shape), i.e.
+        // glyphs actually rasterized rather than a blank canvas.
+        let png = scene_to_png(&sample(), 640).unwrap();
+        let mut dec = resvg::tiny_skia::Pixmap::decode_png(&png).unwrap();
+        let dark = dec
+            .pixels_mut()
+            .iter()
+            .filter(|p| p.red() < 100 && p.green() < 100 && p.blue() < 100 && p.alpha() > 0)
+            .count();
+        assert!(dark > 50, "expected rendered dark pixels, got {dark}");
+    }
+
+    #[cfg(feature = "bundled-fonts")]
+    #[test]
+    fn bundled_font_is_loaded() {
+        let mut opt = build_options();
+        let q = resvg::usvg::fontdb::Query {
+            families: &[resvg::usvg::fontdb::Family::Name("Liberation Sans")],
+            ..Default::default()
+        };
+        assert!(opt.fontdb_mut().query(&q).is_some(), "bundled Liberation Sans should be queryable");
     }
 }
