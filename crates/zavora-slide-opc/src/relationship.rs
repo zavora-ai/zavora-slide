@@ -168,6 +168,12 @@ impl Relationships {
         self.items.iter().find(|r| r.id == id)
     }
 
+    /// Invalidate preserved raw bytes after a direct `items` mutation, forcing
+    /// `to_xml` to re-serialize from the current items.
+    pub fn touch(&mut self) {
+        self.raw = None;
+    }
+
     /// Find the first relationship matching a given type.
     pub fn get_by_type(&self, rel_type: &str) -> Option<&Relationship> {
         self.items.iter().find(|r| r.rel_type == rel_type)

@@ -193,6 +193,10 @@ pub struct SlideData {
     /// Part path this slide was opened from (e.g. "/ppt/slides/slide3.xml"),
     /// used by the overlay save to overwrite the right part in-place.
     pub(crate) source_part: Option<String>,
+    /// Original `<p:sldId>` identity (numeric id, presentation rel id) for a
+    /// slide opened from an existing deck. Lets move/delete reconstruct the
+    /// slide-id list faithfully without renumbering.
+    pub(crate) sld_id: Option<(u32, String)>,
     /// Editable DOM of the slide when opened from an existing deck. Edits mutate
     /// this tree in place; save serializes it byte-faithfully (untouched content
     /// preserved). `None` for slides authored from scratch.
@@ -211,6 +215,7 @@ impl SlideData {
             background: None,
             dirty: false,
             source_part: None,
+            sld_id: None,
             dom: None,
             next_id: 2,
         }

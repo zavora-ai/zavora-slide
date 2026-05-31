@@ -182,6 +182,13 @@ impl ContentTypes {
         }
     }
 
+    /// Remove a part's override content type (e.g. when pruning a deleted part).
+    pub fn remove_override(&mut self, part_name: &str) {
+        if self.overrides.remove(part_name).is_some() {
+            self.raw = None;
+        }
+    }
+
     /// Create a new ContentTypes with the standard PPTX defaults
     /// (rels + xml extensions, and the main presentation part override).
     pub fn new_pptx() -> Self {

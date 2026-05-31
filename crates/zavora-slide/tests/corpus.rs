@@ -162,6 +162,65 @@ fn add_text_box_to_opened_slide_is_surgical() {
 }
 
 #[test]
+fn move_slide_is_faithful() {
+    // Reordering slides on an opened deck rewrites only sldIdLst order; every
+    // part (master/layouts/theme/all slides) stays byte-identical.
+    let mut p = Presentation::open(SAMPLE).unwrap();
+    p.move_slide(0, 2).unwrap();
+    let orig = OpcPackage::open(SAMPLE).unwrap();
+    let out = reopen(p.save_to_buffer().unwrap());
+
+    // All non-presentation parts byte-identical.
+    for name in orig.part_names() {
+        if name == "/ppt/presentation.xml" {
+            continue;
+        }
+        assert_eq!(orig.get_part(name), out.get_part(name), "part {name} byte-preserved");
+    }
+    // sldIdLst order changed; the three sldId entries are reordered, not renumbered.
+    let pres = String::from_utf8(out.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
+    let orig_pres = String::from_utf8(orig.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
+    assert_ne!(pres, orig_pres, "sldIdLst reordered");
+    // Same set of r:id values present (just reordered).
+    let count = |s: &str| s.matches("<p:sldId ").count();
+    assert_eq!(count(&pres), 3, "still three slides");
+}
+
+#[test]
+fn delete_slide_is_faithful() {
+    // Deleting a slide drops it from sldIdLst, prunes its part + presentation
+    // rel, and leaves master/layouts/theme/surviving slides byte-identical.
+    let mut p = Presentation::open(SAMPLE).unwrap();
+    p.delete_slide(1).unwrap(); // remove slide 2 (slide2.xml)
+    let orig = OpcPackage::open(SAMPLE).unwrap();
+    let out = reopen(p.save_to_buffer().unwrap());
+
+    assert_eq!(p.slide_count(), 2);
+    // The deleted slide's part is gone; the others remain byte-identical.
+    assert!(out.get_part("/ppt/slides/slide2.xml").is_none(), "deleted part pruned");
+    assert_eq!(
+        orig.get_part("/ppt/slides/slide1.xml"),
+        out.get_part("/ppt/slides/slide1.xml"),
+        "surviving slide1 byte-preserved"
+    );
+    assert_eq!(
+        orig.get_part("/ppt/slides/slide3.xml"),
+        out.get_part("/ppt/slides/slide3.xml"),
+        "surviving slide3 byte-preserved"
+    );
+    // Master/layouts/theme untouched.
+    for name in orig.part_names() {
+        if name.contains("/slideMasters/") || name.contains("/slideLayouts/") || name.contains("/theme/") {
+            assert_eq!(orig.get_part(name), out.get_part(name), "{name} preserved");
+        }
+    }
+    // presentation rels no longer reference the deleted slide.
+    let prels = out.get_part_rels("/ppt/presentation.xml").unwrap();
+    let slide_rels = prels.items.iter().filter(|r| r.target.contains("slides/slide")).count();
+    assert_eq!(slide_rels, 2, "one slide rel pruned");
+}
+
+#[test]
 fn structural_edit_falls_back_to_rebuild() {
     // Adding a slide is a structural change → full rebuild from the model.
     let mut p = Presentation::open(SAMPLE).unwrap();

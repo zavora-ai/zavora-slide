@@ -24,6 +24,11 @@ pub struct Presentation {
     /// on save for a faithful round-trip; cleared by any edit (after which save
     /// rebuilds from the text-only model — see [`Presentation::open`]).
     source: Option<OpcPackage>,
+    /// Set when slides of a source-backed deck were reordered/deleted (but not
+    /// added/duplicated): the overlay save rebuilds `sldIdLst`/presentation rels
+    /// from the surviving slides' preserved identities and prunes removed parts,
+    /// keeping master/layouts/theme/other parts byte-identical.
+    reordered: bool,
 }
 
 impl Presentation {
@@ -38,6 +43,7 @@ impl Presentation {
             theme: RawPart::from_xml(template::THEME_XML.as_bytes()),
             slides: Vec::new(),
             source: None,
+            reordered: false,
         }
     }
 
@@ -78,6 +84,7 @@ impl Presentation {
                 .and_then(|r| r.get_by_id(&entry.r_id))
                 .map(|rel| OpcPackage::resolve_rel_target("/ppt/presentation.xml", &rel.target));
             let mut data = SlideData::new();
+            data.sld_id = Some((entry.id, entry.r_id.clone()));
             if let Some(part_path) = target.as_deref() {
                 data.source_part = Some(part_path.to_string());
                 if let Some(part) = pkg.get_part(part_path) {
@@ -153,6 +160,7 @@ impl Presentation {
     /// per-layout placeholder geometry lands in later phases.
     pub fn add_slide(&mut self, _layout: Layout) -> usize {
         self.slides.push(SlideData::new());
+        self.invalidate_source();
         self.resync_slide_ids();
         self.slides.len() - 1
     }
@@ -165,21 +173,25 @@ impl Presentation {
             .ok_or_else(|| SlideError::NotFound(format!("slide index {idx}")))?
             .clone();
         self.slides.insert(idx + 1, copy);
+        self.invalidate_source();
         self.resync_slide_ids();
         Ok(idx + 1)
     }
 
-    /// Remove the slide at `idx`.
+    /// Remove the slide at `idx`. On a source-backed deck this is faithful: the
+    /// slide is dropped from `sldIdLst` and its part pruned, while master/
+    /// layouts/theme/other slides stay byte-identical.
     pub fn delete_slide(&mut self, idx: usize) -> Result<()> {
         if idx >= self.slides.len() {
             return Err(SlideError::NotFound(format!("slide index {idx}")));
         }
         self.slides.remove(idx);
-        self.resync_slide_ids();
+        self.mark_reorder_or_rebuild();
         Ok(())
     }
 
-    /// Move the slide at `from` to position `to`.
+    /// Move the slide at `from` to position `to`. Faithful on a source-backed
+    /// deck (only `sldIdLst` order changes).
     pub fn move_slide(&mut self, from: usize, to: usize) -> Result<()> {
         let n = self.slides.len();
         if from >= n || to >= n {
@@ -187,8 +199,28 @@ impl Presentation {
         }
         let s = self.slides.remove(from);
         self.slides.insert(to, s);
-        self.resync_slide_ids();
+        self.mark_reorder_or_rebuild();
         Ok(())
+    }
+
+    /// After a delete/move: if every surviving slide came from the source (each
+    /// has a preserved `sld_id`), keep the source and flag a faithful reorder;
+    /// otherwise fall back to a full rebuild.
+    fn mark_reorder_or_rebuild(&mut self) {
+        if self.source.is_some() && self.slides.iter().all(|s| s.sld_id.is_some()) {
+            self.reordered = true;
+            self.resync_build_ids_only();
+        } else {
+            self.invalidate_source();
+            self.resync_slide_ids();
+        }
+    }
+
+    /// Resync only the build-model `sldIdLst` (used by the rebuild path).
+    fn resync_build_ids_only(&mut self) {
+        self.pres.slide_ids = (0..self.slides.len())
+            .map(|i| SlideIdEntry { id: 256 + i as u32, r_id: format!("rId{}", i + 2) })
+            .collect();
     }
 
     /// Borrow a slide for editing (title, bullets, text boxes). When the deck was
@@ -357,7 +389,70 @@ impl Presentation {
             pkg.part_rels.insert(part.clone(), rels);
             pkg.set_part(part, slide.to_xml());
         }
+
+        if self.reordered {
+            self.apply_reorder(&mut pkg)?;
+        }
         Ok(Some(pkg))
+    }
+
+    /// Rewrite the source `presentation.xml`'s `<p:sldIdLst>` to the surviving
+    /// slides (in current order) using their preserved identities, and prune any
+    /// slide parts/rels no longer referenced. Everything else stays byte-identical.
+    fn apply_reorder(&self, pkg: &mut OpcPackage) -> Result<()> {
+        use zavora_slide_oxml::{Document, Node};
+
+        let pres_xml = pkg
+            .get_part("/ppt/presentation.xml")
+            .ok_or_else(|| SlideError::NotFound("presentation.xml".into()))?;
+        let mut doc = Document::parse(pres_xml).map_err(|e| SlideError::Unsupported(e.to_string()))?;
+
+        // Build the new <p:sldId> children from surviving slides, in order.
+        let mut new_ids: Vec<Node> = Vec::new();
+        let mut kept_rids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for s in &self.slides {
+            let (id, r_id) = s.sld_id.as_ref().expect("reorder requires sld_id");
+            kept_rids.insert(r_id.clone());
+            let xml = format!("<p:sldId id=\"{id}\" r:id=\"{r_id}\"/>");
+            let frag = Document::parse(xml.as_bytes()).map_err(|e| SlideError::Unsupported(e.to_string()))?;
+            new_ids.extend(frag.nodes.into_iter().filter(|n| matches!(n, Node::Element(_))));
+        }
+
+        // Replace the sldIdLst's children in place (preserving the list element).
+        if let Some(root) = doc.root_mut()
+            && let Some(lst) = find_child_named_mut(root, b"sldIdLst")
+        {
+            lst.children = new_ids;
+        }
+        pkg.set_part("/ppt/presentation.xml", doc.to_bytes());
+
+        // Drop presentation→slide rels for deleted slides (avoid dangling targets).
+        if let Some(rels) = pkg.part_rels.get_mut("/ppt/presentation.xml") {
+            let before = rels.items.len();
+            rels.items.retain(|r| {
+                r.rel_type != rel_types::SLIDE || kept_rids.contains(&r.id)
+            });
+            if rels.items.len() != before {
+                rels.touch(); // force re-serialization of the modified rels
+            }
+        }
+
+        // Prune slide parts (and their rels/content-type) no longer referenced.
+        let kept: std::collections::HashSet<&str> =
+            self.slides.iter().filter_map(|s| s.source_part.as_deref()).collect();
+        let all_slide_parts: Vec<String> = pkg
+            .part_names()
+            .filter(|n| n.starts_with("/ppt/slides/slide") && n.ends_with(".xml"))
+            .map(|s| s.to_string())
+            .collect();
+        for part in all_slide_parts {
+            if !kept.contains(part.as_str()) {
+                pkg.remove_part(&part);
+                pkg.part_rels.remove(&part);
+                pkg.content_types.remove_override(&part);
+            }
+        }
+        Ok(())
     }
 
     /// Assemble the full OPC package: parts, content types, and relationships.
@@ -492,6 +587,17 @@ impl Default for Presentation {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// First direct child element of `el` with the given local name (mutable).
+fn find_child_named_mut<'a>(
+    el: &'a mut zavora_slide_oxml::Element,
+    local: &[u8],
+) -> Option<&'a mut zavora_slide_oxml::Element> {
+    el.children.iter_mut().find_map(|n| match n {
+        zavora_slide_oxml::Node::Element(e) if e.local_name() == local => Some(e),
+        _ => None,
+    })
 }
 
 #[cfg(test)]
