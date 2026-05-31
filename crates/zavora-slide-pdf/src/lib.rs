@@ -43,7 +43,8 @@ pub fn scenes_to_pdf(scenes: &[Scene]) -> Result<Vec<u8>, PdfError> {
         let h_pt = (scene.height_emu as f64 / EMU_PER_POINT) as f32;
 
         let svg = zavora_slide_render::scene_to_svg(scene, SVG_W);
-        let opt = usvg::Options::default();
+        let mut opt = usvg::Options::default();
+        opt.fontdb_mut().load_system_fonts();
         let tree = usvg::Tree::from_str(&svg, &opt).map_err(|e| PdfError::Svg(e.to_string()))?;
         let (chunk, root) =
             svg2pdf::to_chunk(&tree, svg2pdf::ConversionOptions::default()).map_err(|_| PdfError::Convert)?;

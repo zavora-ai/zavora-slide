@@ -35,13 +35,15 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
     s.push_str(&format!("<rect width=\"{target_px_w}\" height=\"{h}\" fill=\"{}\"/>", rgb(bg)));
 
     let scale = target_px_w as f64 / sw as f64;
+    // 1 point = 12700 EMU, and `scale` is pixels-per-EMU.
+    let px_per_pt = zavora_slide_layout::EMU_PER_POINT * scale;
     for item in &scene.items {
         match item {
             Item::Rect { rect, fill, outline } => {
                 let (x, y, w, hh) = rect.to_px(sw, target_px_w);
                 let fill_attr = fill.map(rgb).unwrap_or_else(|| "none".into());
                 let (stroke, sw_attr) = match outline {
-                    Some((c, pt)) => (rgb(*c), (*pt * scale * 12700.0 / 9525.0).max(0.5)),
+                    Some((c, pt)) => (rgb(*c), (*pt * px_per_pt).max(0.5)),
                     None => ("none".into(), 0.0),
                 };
                 s.push_str(&format!(
@@ -53,7 +55,7 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
                 let (x, y, _, _) = rect.to_px(sw, target_px_w);
                 let mut cursor_y = y as f64;
                 for ln in lines {
-                    let px = ln.size_pt * scale * 12700.0 / 9525.0; // pt→px at this scale
+                    let px = ln.size_pt * px_per_pt; // pt→px at this scale
                     cursor_y += px * 1.2;
                     let weight = if ln.bold { " font-weight=\"bold\"" } else { "" };
                     let style = if ln.italic { " font-style=\"italic\"" } else { "" };
@@ -84,7 +86,8 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
 /// Render a scene to PNG bytes at the given pixel width (via resvg).
 pub fn scene_to_png(scene: &Scene, target_px_w: u32) -> Result<Vec<u8>, RenderError> {
     let svg = scene_to_svg(scene, target_px_w);
-    let opt = resvg::usvg::Options::default();
+    let mut opt = resvg::usvg::Options::default();
+    opt.fontdb_mut().load_system_fonts();
     let tree = resvg::usvg::Tree::from_str(&svg, &opt).map_err(|e| RenderError::Svg(e.to_string()))?;
     let size = tree.size().to_int_size();
     let mut pixmap = resvg::tiny_skia::Pixmap::new(size.width(), size.height()).ok_or(RenderError::Raster)?;
