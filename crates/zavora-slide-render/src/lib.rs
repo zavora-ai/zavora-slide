@@ -21,6 +21,30 @@ fn rgb(c: Color) -> String {
     format!("#{:02X}{:02X}{:02X}", c.r, c.g, c.b)
 }
 
+/// Greedy word-wrap to a pixel width, estimating glyph advance at ~0.55em
+/// (adequate for sans-serif without a full shaping pass). Always yields ≥1 line.
+fn wrap(text: &str, font_px: f64, max_px: f64) -> Vec<String> {
+    let char_w = font_px * 0.55;
+    let max_chars = (max_px / char_w).floor().max(1.0) as usize;
+    let mut lines = Vec::new();
+    let mut cur = String::new();
+    for word in text.split_whitespace() {
+        if cur.is_empty() {
+            cur.push_str(word);
+        } else if cur.chars().count() + 1 + word.chars().count() <= max_chars {
+            cur.push(' ');
+            cur.push_str(word);
+        } else {
+            lines.push(std::mem::take(&mut cur));
+            cur.push_str(word);
+        }
+    }
+    if !cur.is_empty() || lines.is_empty() {
+        lines.push(cur);
+    }
+    lines
+}
+
 /// Render a scene to an SVG document string at the given pixel width.
 pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
     let h = scene.px_height(target_px_w);
@@ -52,20 +76,27 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
                 ));
             }
             Item::Text { rect, lines } => {
-                let (x, y, _, _) = rect.to_px(sw, target_px_w);
+                let (x, y, w, _) = rect.to_px(sw, target_px_w);
                 let mut cursor_y = y as f64;
                 for ln in lines {
                     let px = ln.size_pt * px_per_pt; // pt→px at this scale
-                    cursor_y += px * 1.2;
                     let weight = if ln.bold { " font-weight=\"bold\"" } else { "" };
                     let style = if ln.italic { " font-style=\"italic\"" } else { "" };
                     let indent = x as f64 + (ln.level as f64) * px * 1.5;
-                    s.push_str(&format!(
-                        "<text x=\"{indent:.1}\" y=\"{cursor_y:.1}\" font-family=\"sans-serif\" \
-                         font-size=\"{px:.1}\" fill=\"{col}\"{weight}{style}>{t}</text>",
-                        col = rgb(ln.color),
-                        t = esc(&ln.text)
-                    ));
+                    // A bullet marker for indented body lines (not titles at lvl 0).
+                    let marker = if ln.level > 0 { "• " } else { "" };
+                    let avail = (w as f64 - (indent - x as f64)).max(px * 4.0);
+                    for (k, seg) in wrap(&format!("{marker}{}", ln.text), px, avail).into_iter().enumerate() {
+                        cursor_y += px * 1.2;
+                        // Hang-indent wrapped continuation lines under the text.
+                        let lx = if k == 0 { indent } else { indent + px };
+                        s.push_str(&format!(
+                            "<text x=\"{lx:.1}\" y=\"{cursor_y:.1}\" font-family=\"sans-serif\" \
+                             font-size=\"{px:.1}\" fill=\"{col}\"{weight}{style}>{t}</text>",
+                            col = rgb(ln.color),
+                            t = esc(&seg)
+                        ));
+                    }
                 }
             }
             Item::Image { rect, data } => {
@@ -131,6 +162,14 @@ mod tests {
             lines: vec![TextLine { text: "Title <&>".into(), size_pt: 32.0, color: Color::BLACK, bold: true, italic: false, level: 0 }],
         });
         s
+    }
+
+    #[test]
+    fn wrap_splits_and_never_empty() {
+        let many = wrap("alpha beta gamma delta epsilon", 20.0, 80.0);
+        assert!(many.len() > 1, "long text should wrap, got {many:?}");
+        assert_eq!(wrap("solo", 20.0, 10.0), vec!["solo".to_string()]);
+        assert_eq!(wrap("", 20.0, 100.0), vec![String::new()]);
     }
 
     #[test]
