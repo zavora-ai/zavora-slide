@@ -52,6 +52,11 @@ impl Presentation {
         self.pres.slide_size.ty = Some(ty.to_string());
     }
 
+    /// Apply a theme (color scheme + fonts) to the deck.
+    pub fn apply_theme(&mut self, theme: &crate::theme::ThemeSpec) {
+        self.theme = RawPart { xml: theme.build_theme_xml() };
+    }
+
     /// Append a blank slide bound to the (single, Phase 0) layout. Returns the
     /// new slide's 0-based index. `_layout` is accepted for API stability;
     /// per-layout placeholder geometry lands in later phases.

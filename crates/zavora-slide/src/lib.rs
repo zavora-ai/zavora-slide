@@ -11,11 +11,13 @@ mod error;
 mod presentation;
 mod slide;
 mod template;
+mod theme;
 mod units;
 
 pub use error::{Result, SlideError};
 pub use presentation::Presentation;
-pub use slide::{Bullet, ShapeInfo, Slide, SlideData};
+pub use slide::{Bullet, Fill, ShapeInfo, Slide, SlideData};
+pub use theme::ThemeSpec;
 pub use units::{Emu, Layout, RenderFormat, ShapePreset, SlideSize};
 
 pub use zavora_slide_oxml::Align;

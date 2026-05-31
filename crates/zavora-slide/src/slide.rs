@@ -25,19 +25,42 @@ impl Bullet {
     }
 }
 
+/// A shape/slide fill.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Fill {
+    /// Solid color (hex, with or without `#`).
+    Solid(String),
+}
+
+impl Fill {
+    fn bg_xml(&self) -> String {
+        match self {
+            Fill::Solid(hex) => {
+                let h = hex.trim_start_matches('#').to_uppercase();
+                format!(
+                    "<p:bg><p:bgPr><a:solidFill><a:srgbClr val=\"{h}\"/></a:solidFill>\
+                     <a:effectLst/></p:bgPr></p:bg>"
+                )
+            }
+        }
+    }
+}
+
 /// Stored slide content: the shapes injected into the slide's `spTree`.
 #[derive(Debug, Clone, Default)]
 pub struct SlideData {
     pub shapes: Vec<Shape>,
     /// Speaker notes text, if any (emitted as a notesSlide part on save).
     pub notes: Option<String>,
+    /// Optional slide background fill.
+    pub background: Option<Fill>,
     /// Next shape id (group shape is id 1, so authored shapes start at 2).
     next_id: u32,
 }
 
 impl SlideData {
     pub fn new() -> Self {
-        Self { shapes: Vec::new(), notes: None, next_id: 2 }
+        Self { shapes: Vec::new(), notes: None, background: None, next_id: 2 }
     }
 
     fn alloc_id(&mut self) -> u32 {
@@ -56,12 +79,13 @@ impl SlideData {
     /// Serialize to a complete slide part.
     pub fn to_xml(&self) -> Vec<u8> {
         let shapes: String = self.shapes.iter().map(Shape::to_xml).collect();
+        let bg = self.background.as_ref().map(Fill::bg_xml).unwrap_or_default();
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
              <p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" \
              xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" \
              xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
-             <p:cSld><p:spTree>\
+             <p:cSld>{bg}<p:spTree>\
              <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
              <p:grpSpPr/>{shapes}</p:spTree></p:cSld>\
              <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
@@ -140,6 +164,11 @@ impl Slide<'_> {
     /// Set (or replace) the slide's speaker notes.
     pub fn set_notes(&mut self, text: &str) {
         self.data.notes = Some(text.to_string());
+    }
+
+    /// Set the slide background fill.
+    pub fn set_background(&mut self, fill: Fill) {
+        self.data.background = Some(fill);
     }
 
     /// Speaker notes text, if any.
@@ -289,5 +318,17 @@ mod tests {
         let xml = String::from_utf8(notes_slide_xml("a < b & c")).unwrap();
         assert!(xml.contains("<p:ph type=\"body\""));
         assert!(xml.contains("a &lt; b &amp; c"));
+    }
+
+    #[test]
+    fn background_emitted_in_csld() {
+        let mut d = SlideData::new();
+        slide(&mut d).set_background(Fill::Solid("#102030".into()));
+        let xml = String::from_utf8(d.to_xml()).unwrap();
+        // bg precedes spTree inside cSld.
+        let bg = xml.find("<p:bg>").unwrap();
+        let tree = xml.find("<p:spTree>").unwrap();
+        assert!(bg < tree);
+        assert!(xml.contains("<a:srgbClr val=\"102030\"/>"));
     }
 }
