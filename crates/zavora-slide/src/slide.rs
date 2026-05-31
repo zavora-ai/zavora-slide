@@ -204,6 +204,15 @@ impl Slide<'_> {
         self.data.shapes.last_mut().unwrap()
     }
 
+    /// Add an auto-shape with the given preset geometry. Returns a mutable
+    /// reference so callers can set fill/outline.
+    pub fn add_shape(&mut self, preset: crate::units::ShapePreset, x: Emu, y: Emu, w: Emu, h: Emu) -> &mut Shape {
+        let id = self.data.alloc_id();
+        let sp = Shape::auto_shape(id, preset.prst(), x.0, y.0, w.0, h.0);
+        self.data.shapes.push(sp);
+        self.data.shapes.last_mut().unwrap()
+    }
+
     /// Set (or replace) the slide's speaker notes.
     pub fn set_notes(&mut self, text: &str) {
         self.data.notes = Some(text.to_string());
@@ -439,5 +448,20 @@ mod tests {
             Emu::inches(1.0),
         );
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn add_shape_with_fill_and_outline() {
+        use crate::units::ShapePreset;
+        let mut d = SlideData::new();
+        {
+            let mut s = slide(&mut d);
+            let sp = s.add_shape(ShapePreset::Ellipse, Emu::inches(1.0), Emu::inches(1.0), Emu::inches(2.0), Emu::inches(2.0));
+            sp.set_fill("#00AA00").set_outline("#000000", 2.0);
+        }
+        let xml = String::from_utf8(d.to_xml()).unwrap();
+        assert!(xml.contains("prst=\"ellipse\""));
+        assert!(xml.contains("<a:srgbClr val=\"00AA00\"/>"));
+        assert!(xml.contains("<a:ln w=\"25400\">"));
     }
 }

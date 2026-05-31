@@ -268,15 +268,21 @@ pub struct Placeholder {
     pub idx: Option<u32>,
 }
 
-/// A shape (`p:sp`) — either a placeholder shape or a positioned text box.
+/// A shape (`p:sp`) — placeholder, text box, or auto-shape.
 #[derive(Debug, Clone)]
 pub struct Shape {
     pub id: u32,
     pub name: String,
     pub placeholder: Option<Placeholder>,
-    /// Explicit geometry (x, y, cx, cy) in EMU, for text boxes.
+    /// Explicit geometry (x, y, cx, cy) in EMU, for text boxes / auto-shapes.
     pub xfrm: Option<(i64, i64, i64, i64)>,
     pub text_box: bool,
+    /// Preset geometry name (`a:prstGeom@prst`), e.g. "rect", "ellipse".
+    pub geom: String,
+    /// Optional solid fill color (hex, no `#`).
+    pub fill: Option<String>,
+    /// Optional outline: (hex color, width in EMU).
+    pub line: Option<(String, i64)>,
     pub body: TextBody,
 }
 
@@ -289,6 +295,9 @@ impl Shape {
             placeholder: Some(Placeholder { ph_type: ph_type.to_string(), idx }),
             xfrm: None,
             text_box: false,
+            geom: "rect".to_string(),
+            fill: None,
+            line: None,
             body,
         }
     }
@@ -301,8 +310,38 @@ impl Shape {
             placeholder: None,
             xfrm: Some((x, y, cx, cy)),
             text_box: true,
+            geom: "rect".to_string(),
+            fill: None,
+            line: None,
             body,
         }
+    }
+
+    /// Build an auto-shape with the given preset geometry.
+    pub fn auto_shape(id: u32, geom: &str, x: i64, y: i64, cx: i64, cy: i64) -> Self {
+        Self {
+            id,
+            name: format!("Shape {id}"),
+            placeholder: None,
+            xfrm: Some((x, y, cx, cy)),
+            text_box: false,
+            geom: geom.to_string(),
+            fill: None,
+            line: None,
+            body: TextBody::default(),
+        }
+    }
+
+    /// Set a solid fill color (hex, with or without `#`).
+    pub fn set_fill(&mut self, hex: &str) -> &mut Self {
+        self.fill = Some(hex.trim_start_matches('#').to_uppercase());
+        self
+    }
+
+    /// Set an outline color (hex) and width in points.
+    pub fn set_outline(&mut self, hex: &str, width_pt: f64) -> &mut Self {
+        self.line = Some((hex.trim_start_matches('#').to_uppercase(), (width_pt * 12700.0) as i64));
+        self
     }
 
     /// Apply a mutation to every run's properties (fluent formatting helpers).
@@ -359,10 +398,23 @@ impl Shape {
             "<p:cNvSpPr/>"
         };
         let sp_pr = match self.xfrm {
-            Some((x, y, cx, cy)) => format!(
-                "<p:spPr><a:xfrm><a:off x=\"{x}\" y=\"{y}\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/>\
-                 </a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>"
-            ),
+            Some((x, y, cx, cy)) => {
+                let fill = self
+                    .fill
+                    .as_ref()
+                    .map(|h| format!("<a:solidFill><a:srgbClr val=\"{h}\"/></a:solidFill>"))
+                    .unwrap_or_default();
+                let line = self
+                    .line
+                    .as_ref()
+                    .map(|(h, w)| format!("<a:ln w=\"{w}\"><a:solidFill><a:srgbClr val=\"{h}\"/></a:solidFill></a:ln>"))
+                    .unwrap_or_default();
+                format!(
+                    "<p:spPr><a:xfrm><a:off x=\"{x}\" y=\"{y}\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/>\
+                     </a:xfrm><a:prstGeom prst=\"{}\"><a:avLst/></a:prstGeom>{fill}{line}</p:spPr>",
+                    esc(&self.geom)
+                )
+            }
             None => "<p:spPr/>".to_string(),
         };
         format!(

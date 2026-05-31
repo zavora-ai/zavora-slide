@@ -85,6 +85,35 @@ pub enum ShapePreset {
     Callout,
 }
 
+impl ShapePreset {
+    /// PresentationML `prstGeom@prst` name.
+    pub fn prst(self) -> &'static str {
+        match self {
+            ShapePreset::Rect => "rect",
+            ShapePreset::RoundRect => "roundRect",
+            ShapePreset::Ellipse => "ellipse",
+            ShapePreset::Triangle => "triangle",
+            ShapePreset::Arrow => "rightArrow",
+            ShapePreset::Line => "line",
+            ShapePreset::Callout => "wedgeRectCallout",
+        }
+    }
+
+    /// Parse a preset name (case-insensitive).
+    pub fn parse(s: &str) -> Option<ShapePreset> {
+        match s.to_ascii_lowercase().replace(['_', '-', ' '], "").as_str() {
+            "rect" | "rectangle" => Some(ShapePreset::Rect),
+            "roundrect" | "roundedrectangle" => Some(ShapePreset::RoundRect),
+            "ellipse" | "oval" | "circle" => Some(ShapePreset::Ellipse),
+            "triangle" => Some(ShapePreset::Triangle),
+            "arrow" => Some(ShapePreset::Arrow),
+            "line" => Some(ShapePreset::Line),
+            "callout" => Some(ShapePreset::Callout),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
