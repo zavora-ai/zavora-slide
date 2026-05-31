@@ -30,6 +30,18 @@ fn dom_round_trips_every_xml_part_byte_for_byte() {
 }
 
 #[test]
+fn opened_slides_carry_byte_faithful_dom() {
+    // Every opened slide parses into a DOM that re-serializes byte-identical to
+    // its source part — the foundation for surgical editing.
+    let p = Presentation::open(SAMPLE).unwrap();
+    let pkg = OpcPackage::open(SAMPLE).unwrap();
+    for i in 0..p.slide_count() {
+        let (part, dom_bytes) = p.slide_dom_debug(i).expect("opened slide has a DOM");
+        assert_eq!(dom_bytes, pkg.get_part(&part).unwrap(), "DOM faithful for {part}");
+    }
+}
+
+#[test]
 fn opens_real_powerpoint_deck() {
     let p = Presentation::open(SAMPLE).expect("open PowerPoint-authored deck");
     assert_eq!(p.slide_count(), 3, "should recover all slides");

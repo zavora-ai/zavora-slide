@@ -193,6 +193,10 @@ pub struct SlideData {
     /// Part path this slide was opened from (e.g. "/ppt/slides/slide3.xml"),
     /// used by the overlay save to overwrite the right part in-place.
     pub(crate) source_part: Option<String>,
+    /// Editable DOM of the slide when opened from an existing deck. Edits mutate
+    /// this tree in place; save serializes it byte-faithfully (untouched content
+    /// preserved). `None` for slides authored from scratch.
+    pub(crate) dom: Option<zavora_slide_oxml::SlideDom>,
     /// Next shape id (group shape is id 1, so authored shapes start at 2).
     next_id: u32,
 }
@@ -207,6 +211,7 @@ impl SlideData {
             background: None,
             dirty: false,
             source_part: None,
+            dom: None,
             next_id: 2,
         }
     }

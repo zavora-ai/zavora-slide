@@ -81,6 +81,9 @@ impl Presentation {
             if let Some(part_path) = target.as_deref() {
                 data.source_part = Some(part_path.to_string());
                 if let Some(part) = pkg.get_part(part_path) {
+                    // Authoritative editable DOM (lossless, surgical edits).
+                    data.dom = Some(zavora_slide_oxml::SlideDom::parse(part)?);
+                    // Text extraction still feeds render/markdown read paths.
                     let body = TextBody::from_xml(part)?;
                     if !body.paragraphs.is_empty() {
                         let bullets: Vec<crate::slide::Bullet> = body
@@ -209,6 +212,14 @@ impl Presentation {
             .get(idx)
             .ok_or_else(|| SlideError::NotFound(format!("slide index {idx}")))?;
         Ok(crate::slide::SlideRef { data, slide_cx: cx, slide_cy: cy })
+    }
+
+    /// Test/inspection helper: a slide's source part path and current DOM bytes,
+    /// if it was opened from an existing deck.
+    #[doc(hidden)]
+    pub fn slide_dom_debug(&self, idx: usize) -> Option<(String, Vec<u8>)> {
+        let s = self.slides.get(idx)?;
+        Some((s.source_part.clone()?, s.dom.as_ref()?.to_bytes()))
     }
 
     /// Render a slide to PNG or SVG bytes at a default width (1280px).
