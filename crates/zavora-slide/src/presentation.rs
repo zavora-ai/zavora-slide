@@ -36,6 +36,54 @@ impl Presentation {
         }
     }
 
+    /// Open an existing `.pptx`, extracting **text only** into the model.
+    ///
+    /// This powers read/inspect/convert in the CLI. It is intentionally lossy:
+    /// shapes, images, tables, and formatting are not reconstructed, so a
+    /// re-saved deck would contain only the extracted text. A faithful
+    /// round-trip is future work (Requirement 3).
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        use zavora_slide_oxml::TextBody;
+        let pkg = OpcPackage::open(path)?;
+        let pres_xml = pkg
+            .get_part("/ppt/presentation.xml")
+            .ok_or_else(|| SlideError::NotFound("presentation.xml".into()))?;
+        let parsed = PresXml::from_xml(pres_xml)?;
+
+        let mut p = Presentation::new();
+        p.pres.slide_size = parsed.slide_size.clone();
+
+        // Slides in id-list order; resolve each rel target to a part.
+        let rels = pkg.get_part_rels("/ppt/presentation.xml");
+        for entry in &parsed.slide_ids {
+            let target = rels
+                .and_then(|r| r.get_by_id(&entry.r_id))
+                .map(|rel| OpcPackage::resolve_rel_target("/ppt/presentation.xml", &rel.target));
+            let mut data = SlideData::new();
+            if let Some(part) = target.as_deref().and_then(|t| pkg.get_part(t)) {
+                let body = TextBody::from_xml(part)?;
+                if !body.paragraphs.is_empty() {
+                    // Put extracted paragraphs into a body placeholder.
+                    let bullets: Vec<crate::slide::Bullet> = body
+                        .paragraphs
+                        .iter()
+                        .map(|para| crate::slide::Bullet {
+                            text: para.text(),
+                            level: para.level.unwrap_or(0),
+                            bold: false,
+                        })
+                        .collect();
+                    let (cx, cy) = (p.pres.slide_size.cx, p.pres.slide_size.cy);
+                    let mut slide = Slide { data: &mut data, slide_cx: cx, slide_cy: cy };
+                    let _ = slide.add_bullets(&bullets);
+                }
+            }
+            p.slides.push(data);
+        }
+        p.resync_slide_ids();
+        Ok(p)
+    }
+
     /// Number of slides in the deck.
     pub fn slide_count(&self) -> usize {
         self.slides.len()
