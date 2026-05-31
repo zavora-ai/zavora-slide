@@ -6,18 +6,20 @@ use std::path::Path;
 use zavora_slide_opc::{OpcPackage, rel_types};
 use zavora_slide_oxml::{Presentation as PresXml, RawPart, SlideIdEntry};
 
-use crate::error::Result;
+use crate::error::{Result, SlideError};
+use crate::slide::{Slide, SlideData};
 use crate::template;
 use crate::units::{Layout, SlideSize};
 
-/// An in-memory presentation. Slides are stored as raw XML parts in Phase 0;
-/// the typed `presentation.xml` model owns the slide/master id lists and size.
+/// An in-memory presentation. The typed `presentation.xml` model owns the
+/// slide/master id lists and size; master/layout/theme are carried verbatim;
+/// slides hold structured, authorable content.
 pub struct Presentation {
     pres: PresXml,
     master: RawPart,
     layout: RawPart,
     theme: RawPart,
-    slides: Vec<RawPart>,
+    slides: Vec<SlideData>,
     /// Next numeric slide id for `sldIdLst` (PowerPoint starts at 256).
     next_slide_id: u32,
 }
@@ -55,12 +57,22 @@ impl Presentation {
     /// per-layout placeholder geometry lands in later phases.
     pub fn add_slide(&mut self, _layout: Layout) -> usize {
         let idx = self.slides.len();
-        self.slides.push(RawPart::from_xml(template::BLANK_SLIDE_XML.as_bytes()));
+        self.slides.push(SlideData::new());
         let id = self.next_slide_id;
         self.next_slide_id += 1;
         // Presentation-part rel id for this slide: rId(2 + idx) — rId1 is the master.
         self.pres.slide_ids.push(SlideIdEntry { id, r_id: format!("rId{}", idx + 2) });
         idx
+    }
+
+    /// Borrow a slide for editing (title, bullets, text boxes).
+    pub fn slide_mut(&mut self, idx: usize) -> Result<Slide<'_>> {
+        let (cx, cy) = (self.pres.slide_size.cx, self.pres.slide_size.cy);
+        let data = self
+            .slides
+            .get_mut(idx)
+            .ok_or_else(|| SlideError::NotFound(format!("slide index {idx}")))?;
+        Ok(Slide { data, slide_cx: cx, slide_cy: cy })
     }
 
     /// Save to a file path.

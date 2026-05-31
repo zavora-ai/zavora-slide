@@ -11,7 +11,6 @@
 pub const THEME_XML: &str = include_str!("parts/theme1.xml");
 pub const SLIDE_MASTER_XML: &str = include_str!("parts/slideMaster1.xml");
 pub const SLIDE_LAYOUT_XML: &str = include_str!("parts/slideLayout1.xml");
-pub const BLANK_SLIDE_XML: &str = include_str!("parts/blankSlide.xml");
 pub const PRES_PROPS_XML: &str = include_str!("parts/presProps.xml");
 pub const VIEW_PROPS_XML: &str = include_str!("parts/viewProps.xml");
 pub const TABLE_STYLES_XML: &str = include_str!("parts/tableStyles.xml");

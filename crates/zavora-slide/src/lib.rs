@@ -9,9 +9,13 @@
 
 mod error;
 mod presentation;
+mod slide;
 mod template;
 mod units;
 
 pub use error::{Result, SlideError};
 pub use presentation::Presentation;
+pub use slide::{Bullet, Slide, SlideData};
 pub use units::{Emu, Layout, RenderFormat, ShapePreset, SlideSize};
+
+pub use zavora_slide_oxml::Align;
