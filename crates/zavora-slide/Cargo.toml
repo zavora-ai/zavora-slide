@@ -15,4 +15,5 @@ categories.workspace = true
 zavora-slide-opc = { workspace = true }
 zavora-slide-oxml = { workspace = true }
 zavora-slide-layout = { workspace = true }
+zavora-slide-render = { workspace = true }
 thiserror = { workspace = true }

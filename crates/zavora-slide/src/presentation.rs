@@ -116,6 +116,23 @@ impl Presentation {
         Ok(Slide { data, slide_cx: cx, slide_cy: cy })
     }
 
+    /// Render a slide to PNG or SVG bytes at a default width (1280px).
+    pub fn render_slide(&self, idx: usize, format: crate::units::RenderFormat) -> Result<Vec<u8>> {
+        let data = self
+            .slides
+            .get(idx)
+            .ok_or_else(|| SlideError::NotFound(format!("slide index {idx}")))?;
+        let scene = data.to_scene(self.pres.slide_size.cx, self.pres.slide_size.cy);
+        const WIDTH: u32 = 1280;
+        match format {
+            crate::units::RenderFormat::Svg => {
+                Ok(zavora_slide_render::scene_to_svg(&scene, WIDTH).into_bytes())
+            }
+            crate::units::RenderFormat::Png => zavora_slide_render::scene_to_png(&scene, WIDTH)
+                .map_err(|e| SlideError::Unsupported(format!("render: {e}"))),
+        }
+    }
+
     /// A text outline of the deck: per slide, its shape text and any notes.
     pub fn to_markdown(&self) -> String {
         let mut out = String::new();
