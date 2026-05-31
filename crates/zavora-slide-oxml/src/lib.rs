@@ -9,8 +9,10 @@ mod error;
 pub mod drawing;
 pub mod presentation;
 mod raw_part;
+pub mod xml;
 
 pub use drawing::{Align, Paragraph, Placeholder, Run, RunProps, Shape, TextBody};
 pub use error::{OxmlError, Result};
 pub use presentation::{Presentation, SlideIdEntry, SlideSize};
 pub use raw_part::RawPart;
+pub use xml::{Document, Element, Node};

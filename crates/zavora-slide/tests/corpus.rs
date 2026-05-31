@@ -7,8 +7,27 @@
 
 use zavora_slide::Presentation;
 use zavora_slide_opc::OpcPackage;
+use zavora_slide_oxml::Document;
 
 const SAMPLE: &str = "tests/corpus/powerpoint_sample.pptx";
+
+#[test]
+fn dom_round_trips_every_xml_part_byte_for_byte() {
+    // The lossless XML DOM is the foundation for surgical editing: every real
+    // PowerPoint-authored part must parse and re-serialize byte-identical.
+    let pkg = OpcPackage::open(SAMPLE).unwrap();
+    let mut checked = 0;
+    for name in pkg.part_names() {
+        if !name.ends_with(".xml") {
+            continue;
+        }
+        let src = pkg.get_part(name).unwrap();
+        let doc = Document::parse(src).unwrap_or_else(|e| panic!("parse {name}: {e}"));
+        assert_eq!(doc.to_bytes(), src, "DOM byte-faithful for {name}");
+        checked += 1;
+    }
+    assert!(checked >= 5, "expected several xml parts, got {checked}");
+}
 
 #[test]
 fn opens_real_powerpoint_deck() {
