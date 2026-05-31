@@ -162,7 +162,13 @@ pub struct TextBody {
 
 impl TextBody {
     pub fn to_xml(&self) -> String {
-        let ps: String = self.paragraphs.iter().map(Paragraph::to_xml).collect();
+        // CT_TextBody requires at least one paragraph; emit an empty one when
+        // the body has no content (e.g. an auto-shape with no text).
+        let ps: String = if self.paragraphs.is_empty() {
+            "<a:p/>".to_string()
+        } else {
+            self.paragraphs.iter().map(Paragraph::to_xml).collect()
+        };
         format!("<p:txBody><a:bodyPr/><a:lstStyle/>{ps}</p:txBody>")
     }
 
@@ -469,6 +475,15 @@ mod tests {
         assert_eq!(parsed.paragraphs[0].runs[0].props.size_pt, Some(24.0));
         assert_eq!(parsed.paragraphs[1].text(), "World");
         assert_eq!(parsed.paragraphs[1].level, Some(2));
+    }
+
+    #[test]
+    fn empty_textbody_still_has_paragraph() {
+        // CT_TextBody requires >=1 a:p; an auto-shape with no text must still emit one.
+        let sp = Shape::auto_shape(2, "ellipse", 0, 0, 100, 100);
+        let xml = sp.to_xml();
+        assert!(xml.contains("<p:txBody>"));
+        assert!(xml.contains("<a:p/>"));
     }
 
     #[test]
