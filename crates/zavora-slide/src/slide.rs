@@ -187,6 +187,12 @@ pub struct SlideData {
     pub notes: Option<String>,
     /// Optional slide background fill.
     pub background: Option<Fill>,
+    /// Set when this slide is edited after being opened from a source package,
+    /// so the save overlay re-authors just this slide (see `Presentation::save`).
+    pub(crate) dirty: bool,
+    /// Part path this slide was opened from (e.g. "/ppt/slides/slide3.xml"),
+    /// used by the overlay save to overwrite the right part in-place.
+    pub(crate) source_part: Option<String>,
     /// Next shape id (group shape is id 1, so authored shapes start at 2).
     next_id: u32,
 }
@@ -199,6 +205,8 @@ impl SlideData {
             tables: Vec::new(),
             notes: None,
             background: None,
+            dirty: false,
+            source_part: None,
             next_id: 2,
         }
     }

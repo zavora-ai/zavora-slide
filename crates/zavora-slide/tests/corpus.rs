@@ -1,10 +1,9 @@
 //! Corpus test: open real PowerPoint-authored `.pptx` files.
 //!
-//! Scope: the high-level `open()` is text-only (Requirement 3's faithful
-//! round-trip is future work), so this asserts the engine *opens* genuine
-//! PowerPoint decks without error and extracts their text. Lossless part
-//! preservation is verified at the OPC layer, which round-trips all parts
-//! byte-for-byte regardless of high-level modeling.
+//! Asserts the engine opens genuine PowerPoint decks, extracts their text, and
+//! round-trips them faithfully: an unedited deck saves byte-identical; editing a
+//! slide overlays only that slide while preserving every other part; structural
+//! changes fall back to a full model rebuild.
 
 use zavora_slide::Presentation;
 use zavora_slide_opc::OpcPackage;
@@ -72,13 +71,47 @@ fn reading_does_not_break_round_trip() {
 }
 
 #[test]
-fn editing_invalidates_round_trip() {
-    // Editing an opened deck drops the source; save reflects the rebuilt model.
+fn editing_overlays_only_edited_slide() {
+    // Editing slide 0 re-authors just that slide; master/layouts/theme and the
+    // other slides stay byte-identical (overlay save, not a full rebuild).
     let mut p = Presentation::open(SAMPLE).unwrap();
-    p.slide_mut(0).unwrap().set_title("Edited").unwrap();
+    p.slide_mut(0).unwrap().set_title("Edited Title").unwrap();
     let saved = p.save_to_buffer().unwrap();
-    let resaved = OpcPackage::from_reader(std::io::Cursor::new(saved)).unwrap();
-    // Original has 11 layouts; the rebuilt package has exactly 1.
-    let layouts = resaved.part_names().filter(|n| n.contains("/slideLayouts/slideLayout")).count();
-    assert_eq!(layouts, 1, "edited save uses the rebuilt single-layout package");
+    let orig = OpcPackage::open(SAMPLE).unwrap();
+    let out = OpcPackage::from_reader(std::io::Cursor::new(saved)).unwrap();
+
+    // All 11 original layouts survive (no rebuild to a single layout).
+    let layouts = out.part_names().filter(|n| n.contains("/slideLayouts/slideLayout")).count();
+    assert_eq!(layouts, 11, "original layouts preserved");
+
+    // Everything except the edited slide is byte-identical.
+    for name in orig.part_names() {
+        if name == "/ppt/slides/slide1.xml" {
+            continue;
+        }
+        assert_eq!(orig.get_part(name), out.get_part(name), "part {name} preserved");
+    }
+
+    // The edited slide carries the new title and links to its original layout.
+    let s1 = String::from_utf8(out.get_part("/ppt/slides/slide1.xml").unwrap().to_vec()).unwrap();
+    assert!(s1.contains("Edited Title"), "edited slide has new title");
+    assert!(
+        out.get_part_rels("/ppt/slides/slide1.xml")
+            .unwrap()
+            .items
+            .iter()
+            .any(|r| r.target.contains("slideLayout")),
+        "edited slide keeps a layout relationship"
+    );
+}
+
+#[test]
+fn structural_edit_falls_back_to_rebuild() {
+    // Adding a slide is a structural change → full rebuild from the model.
+    let mut p = Presentation::open(SAMPLE).unwrap();
+    p.add_slide(zavora_slide::Layout::Blank);
+    let saved = p.save_to_buffer().unwrap();
+    let out = OpcPackage::from_reader(std::io::Cursor::new(saved)).unwrap();
+    let layouts = out.part_names().filter(|n| n.contains("/slideLayouts/slideLayout")).count();
+    assert_eq!(layouts, 1, "structural edit rebuilds with the engine's single layout");
 }

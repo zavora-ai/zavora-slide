@@ -41,14 +41,17 @@ impl Presentation {
         }
     }
 
-    /// Open an existing `.pptx`. The original package is preserved and re-emitted
-    /// verbatim on [`save`](Self::save) for a **faithful round-trip**, as long as
-    /// the deck is not edited.
+    /// Open an existing `.pptx`. The original package is preserved; on
+    /// [`save`](Self::save) it is re-emitted with all parts byte-identical except
+    /// the slides you actually edited, which are re-authored in place (an
+    /// **overlay save**). Master, layouts, theme, untouched slides, and media are
+    /// preserved verbatim — so editing one slide no longer rebuilds the whole deck.
     ///
-    /// The in-memory model is populated by **text-only** extraction (shapes,
-    /// images, tables, and formatting are not reconstructed). Any edit clears the
-    /// preserved package, after which save rebuilds from the text-only model —
-    /// so editing an opened deck is lossy. Faithful *editing* is future work.
+    /// Each opened slide's in-memory model is **text-only** (paragraph text +
+    /// level); an edited slide is re-authored from that model, so its own
+    /// original unmodeled detail (custom shapes, exact run formatting) is not
+    /// preserved. Structural changes (add/delete/move/duplicate slide, theme,
+    /// slide size) fall back to a full rebuild from the engine's model.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         Self::open_from_package(OpcPackage::open(path)?)
     }
@@ -75,23 +78,27 @@ impl Presentation {
                 .and_then(|r| r.get_by_id(&entry.r_id))
                 .map(|rel| OpcPackage::resolve_rel_target("/ppt/presentation.xml", &rel.target));
             let mut data = SlideData::new();
-            if let Some(part) = target.as_deref().and_then(|t| pkg.get_part(t)) {
-                let body = TextBody::from_xml(part)?;
-                if !body.paragraphs.is_empty() {
-                    let bullets: Vec<crate::slide::Bullet> = body
-                        .paragraphs
-                        .iter()
-                        .map(|para| crate::slide::Bullet {
-                            text: para.text(),
-                            level: para.level.unwrap_or(0),
-                            bold: false,
-                        })
-                        .collect();
-                    let (cx, cy) = (p.pres.slide_size.cx, p.pres.slide_size.cy);
-                    let mut slide = Slide { data: &mut data, slide_cx: cx, slide_cy: cy };
-                    let _ = slide.add_bullets(&bullets);
+            if let Some(part_path) = target.as_deref() {
+                data.source_part = Some(part_path.to_string());
+                if let Some(part) = pkg.get_part(part_path) {
+                    let body = TextBody::from_xml(part)?;
+                    if !body.paragraphs.is_empty() {
+                        let bullets: Vec<crate::slide::Bullet> = body
+                            .paragraphs
+                            .iter()
+                            .map(|para| crate::slide::Bullet {
+                                text: para.text(),
+                                level: para.level.unwrap_or(0),
+                                bold: false,
+                            })
+                            .collect();
+                        let (cx, cy) = (p.pres.slide_size.cx, p.pres.slide_size.cy);
+                        let mut slide = Slide { data: &mut data, slide_cx: cx, slide_cy: cy };
+                        let _ = slide.add_bullets(&bullets);
+                    }
                 }
             }
+            data.dirty = false;
             p.slides.push(data);
         }
         p.resync_slide_ids();
@@ -180,15 +187,17 @@ impl Presentation {
         Ok(())
     }
 
-    /// Borrow a slide for editing (title, bullets, text boxes). Editing a slide
-    /// invalidates the preserved source package (see [`Presentation::open`]).
+    /// Borrow a slide for editing (title, bullets, text boxes). When the deck was
+    /// opened from a source package, the edited slide is marked dirty and
+    /// re-authored on save while every other part stays byte-identical (overlay
+    /// save). The edited slide's own unmodeled detail is not preserved.
     pub fn slide_mut(&mut self, idx: usize) -> Result<Slide<'_>> {
         if idx >= self.slides.len() {
             return Err(SlideError::NotFound(format!("slide index {idx}")));
         }
-        self.invalidate_source();
         let (cx, cy) = (self.pres.slide_size.cx, self.pres.slide_size.cy);
         let data = &mut self.slides[idx];
+        data.dirty = true;
         Ok(Slide { data, slide_cx: cx, slide_cy: cy })
     }
 
@@ -259,8 +268,8 @@ impl Presentation {
 
     /// Save to a file path.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        if let Some(src) = &self.source {
-            src.save(path)?;
+        if let Some(pkg) = self.overlay_package()? {
+            pkg.save(path)?;
             return Ok(());
         }
         self.build_package()?.save(path)?;
@@ -275,12 +284,56 @@ impl Presentation {
     }
 
     fn write_to<W: Write + Seek>(&self, w: W) -> Result<()> {
-        if let Some(src) = &self.source {
-            src.write_to(w)?;
+        if let Some(pkg) = self.overlay_package()? {
+            pkg.write_to(w)?;
             return Ok(());
         }
         self.build_package()?.write_to(w)?;
         Ok(())
+    }
+
+    /// When the deck was opened from a source package, return a faithful package:
+    /// the original parts byte-for-byte, with only the **edited** slides re-authored
+    /// in place (preserving master/layouts/theme/other slides/media). Returns
+    /// `None` (→ full rebuild) when there is no source, or when an edit can't be
+    /// overlaid safely (a structural change cleared the source, or an edited slide
+    /// gained notes — injecting a notesMaster into a foreign deck risks repair).
+    fn overlay_package(&self) -> Result<Option<OpcPackage>> {
+        let Some(src) = &self.source else { return Ok(None) };
+        if self.slides.iter().any(|s| s.dirty && s.notes.is_some()) {
+            return Ok(None);
+        }
+        let mut pkg = src.clone();
+        for slide in self.slides.iter().filter(|s| s.dirty) {
+            let Some(part) = &slide.source_part else { continue };
+            // Preserve the slide's original layout link; rebuild media rels.
+            let layout_target = pkg
+                .get_part_rels(part)
+                .and_then(|r| r.get_by_type(rel_types::SLIDE_LAYOUT))
+                .map(|r| r.target.clone());
+            let mut rels = zavora_slide_opc::Relationships::new();
+            if let Some(t) = &layout_target {
+                rels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, t);
+            }
+            // Media targets sit next to the slide part (../media/...).
+            let stem = part.rsplit('/').next().unwrap_or("slide").trim_end_matches(".xml");
+            if let Some(crate::slide::Fill::Picture { data, ext }) = &slide.background {
+                rels.add_with_id(crate::slide::BG_EMBED_RID, rel_types::IMAGE, &format!("../media/bg_{stem}.{ext}"));
+                let ct_ext = if ext == "jpg" { "jpeg" } else { ext.as_str() };
+                pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                pkg.set_part(&format!("/ppt/media/bg_{stem}.{ext}"), data.clone());
+            }
+            for img in &slide.images {
+                let name = format!("img_{stem}_{}.{}", img.id, img.ext);
+                rels.add_with_id(&img.embed_rid, rel_types::IMAGE, &format!("../media/{name}"));
+                let ct_ext = if img.ext == "jpg" { "jpeg" } else { img.ext.as_str() };
+                pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                pkg.set_part(&format!("/ppt/media/{name}"), img.data.clone());
+            }
+            pkg.part_rels.insert(part.clone(), rels);
+            pkg.set_part(part, slide.to_xml());
+        }
+        Ok(Some(pkg))
     }
 
     /// Assemble the full OPC package: parts, content types, and relationships.
