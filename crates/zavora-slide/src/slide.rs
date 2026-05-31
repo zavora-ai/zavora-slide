@@ -29,13 +29,15 @@ impl Bullet {
 #[derive(Debug, Clone, Default)]
 pub struct SlideData {
     pub shapes: Vec<Shape>,
+    /// Speaker notes text, if any (emitted as a notesSlide part on save).
+    pub notes: Option<String>,
     /// Next shape id (group shape is id 1, so authored shapes start at 2).
     next_id: u32,
 }
 
 impl SlideData {
     pub fn new() -> Self {
-        Self { shapes: Vec::new(), next_id: 2 }
+        Self { shapes: Vec::new(), notes: None, next_id: 2 }
     }
 
     fn alloc_id(&mut self) -> u32 {
@@ -135,6 +137,32 @@ impl Slide<'_> {
         self.data.shapes.last_mut().unwrap()
     }
 
+    /// Set (or replace) the slide's speaker notes.
+    pub fn set_notes(&mut self, text: &str) {
+        self.data.notes = Some(text.to_string());
+    }
+
+    /// Speaker notes text, if any.
+    pub fn notes(&self) -> Option<&str> {
+        self.data.notes.as_deref()
+    }
+
+    /// A summary of the slide's shapes (kind + extracted text).
+    pub fn shapes(&self) -> Vec<ShapeInfo> {
+        self.data
+            .shapes
+            .iter()
+            .map(|sp| ShapeInfo {
+                kind: match &sp.placeholder {
+                    Some(ph) => ph.ph_type.clone(),
+                    None if sp.text_box => "textbox".to_string(),
+                    None => "shape".to_string(),
+                },
+                text: sp.body.paragraphs.iter().map(|p| p.text()).collect::<Vec<_>>().join("\n"),
+            })
+            .collect()
+    }
+
     /// Extracted plain text of all shapes (one paragraph per line).
     pub fn text(&self) -> String {
         let mut lines = Vec::new();
@@ -145,6 +173,42 @@ impl Slide<'_> {
         }
         lines.join("\n")
     }
+}
+
+/// A lightweight description of one shape, for read/inspection.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShapeInfo {
+    /// Placeholder type (e.g. "title", "body"), "textbox", or "shape".
+    pub kind: String,
+    pub text: String,
+}
+
+/// Build a canonical notesSlide part for the given notes text. Mirrors the
+/// structure PowerPoint emits: a slide-image placeholder and a body
+/// placeholder carrying the notes.
+pub(crate) fn notes_slide_xml(notes: &str) -> Vec<u8> {
+    let esc = notes
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
+         <p:notes xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" \
+         xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" \
+         xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
+         <p:cSld><p:spTree>\
+         <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
+         <p:grpSpPr/>\
+         <p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Slide Image Placeholder 1\"/>\
+         <p:cNvSpPr><a:spLocks noGrp=\"1\"/></p:cNvSpPr>\
+         <p:nvPr><p:ph type=\"sldImg\" idx=\"1\"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>\
+         <p:sp><p:nvSpPr><p:cNvPr id=\"3\" name=\"Notes Placeholder 2\"/>\
+         <p:cNvSpPr><a:spLocks noGrp=\"1\"/></p:cNvSpPr>\
+         <p:nvPr><p:ph type=\"body\" idx=\"1\"/></p:nvPr></p:nvSpPr><p:spPr/>\
+         <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{esc}</a:t></a:r></a:p></p:txBody></p:sp>\
+         </p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>"
+    )
+    .into_bytes()
 }
 
 #[cfg(test)]
@@ -200,5 +264,30 @@ mod tests {
         assert!(xml.contains("b=\"1\""));
         assert!(xml.contains("<a:srgbClr val=\"FF0000\"/>"));
         assert!(xml.contains("sz=\"1800\""));
+    }
+
+    #[test]
+    fn notes_and_shape_inventory() {
+        let mut d = SlideData::new();
+        {
+            let mut s = slide(&mut d);
+            s.set_title("T").unwrap();
+            s.add_bullets(&[Bullet::new("one")]).unwrap();
+            s.set_notes("remember this");
+            assert_eq!(s.notes(), Some("remember this"));
+            let inv = s.shapes();
+            assert_eq!(inv.len(), 2);
+            assert_eq!(inv[0].kind, "title");
+            assert_eq!(inv[1].kind, "body");
+            assert_eq!(inv[1].text, "one");
+        }
+        assert_eq!(d.notes.as_deref(), Some("remember this"));
+    }
+
+    #[test]
+    fn notes_slide_part_escapes() {
+        let xml = String::from_utf8(notes_slide_xml("a < b & c")).unwrap();
+        assert!(xml.contains("<p:ph type=\"body\""));
+        assert!(xml.contains("a &lt; b &amp; c"));
     }
 }

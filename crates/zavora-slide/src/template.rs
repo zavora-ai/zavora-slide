@@ -16,6 +16,7 @@ pub const VIEW_PROPS_XML: &str = include_str!("parts/viewProps.xml");
 pub const TABLE_STYLES_XML: &str = include_str!("parts/tableStyles.xml");
 pub const CORE_XML: &str = include_str!("parts/core.xml");
 pub const APP_XML: &str = include_str!("parts/app.xml");
+pub const NOTES_MASTER_XML: &str = include_str!("parts/notesMaster1.xml");
 
 // Content types.
 pub const CT_SLIDE: &str =
@@ -35,6 +36,10 @@ pub const CT_CORE: &str =
     "application/vnd.openxmlformats-package.core-properties+xml";
 pub const CT_APP: &str =
     "application/vnd.openxmlformats-officedocument.extended-properties+xml";
+pub const CT_NOTES_SLIDE: &str =
+    "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml";
+pub const CT_NOTES_MASTER: &str =
+    "application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml";
 
 // Relationship type URIs not in the opc rel_types module.
 pub const RT_PRES_PROPS: &str =
@@ -47,3 +52,9 @@ pub const RT_CORE: &str =
     "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties";
 pub const RT_EXTENDED: &str =
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties";
+pub const RT_NOTES_SLIDE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide";
+pub const RT_NOTES_MASTER: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster";
+pub const RT_SLIDE: &str =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide";

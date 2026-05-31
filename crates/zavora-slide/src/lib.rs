@@ -15,7 +15,7 @@ mod units;
 
 pub use error::{Result, SlideError};
 pub use presentation::Presentation;
-pub use slide::{Bullet, Slide, SlideData};
+pub use slide::{Bullet, ShapeInfo, Slide, SlideData};
 pub use units::{Emu, Layout, RenderFormat, ShapePreset, SlideSize};
 
 pub use zavora_slide_oxml::Align;

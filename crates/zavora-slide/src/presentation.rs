@@ -75,6 +75,28 @@ impl Presentation {
         Ok(Slide { data, slide_cx: cx, slide_cy: cy })
     }
 
+    /// A text outline of the deck: per slide, its shape text and any notes.
+    pub fn to_markdown(&self) -> String {
+        let mut out = String::new();
+        for (i, s) in self.slides.iter().enumerate() {
+            out.push_str(&format!("# Slide {}\n", i + 1));
+            for sp in &s.shapes {
+                for p in &sp.body.paragraphs {
+                    let t = p.text();
+                    if t.is_empty() {
+                        continue;
+                    }
+                    let lvl = p.level.unwrap_or(0) as usize;
+                    out.push_str(&format!("{}- {}\n", "  ".repeat(lvl), t));
+                }
+            }
+            if let Some(n) = &s.notes {
+                out.push_str(&format!("> notes: {n}\n"));
+            }
+        }
+        out
+    }
+
     /// Save to a file path.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let pkg = self.build_package()?;
@@ -153,16 +175,40 @@ impl Presentation {
             rels.add_with_id("rId1", rel_types::SLIDE_MASTER, "../slideMasters/slideMaster1.xml");
         }
 
-        // Each slide part + its layout rel.
+        // Each slide part + its layout rel (+ notes rel when present).
+        let has_notes = self.slides.iter().any(|s| s.notes.is_some());
         for (idx, slide) in self.slides.iter().enumerate() {
             let part = format!("/ppt/slides/slide{}.xml", idx + 1);
             pkg.content_types.add_override(&part, template::CT_SLIDE);
             pkg.set_part(&part, slide.to_xml());
-            pkg.get_or_create_part_rels(&part).add_with_id(
-                "rId1",
-                rel_types::SLIDE_LAYOUT,
-                "../slideLayouts/slideLayout1.xml",
-            );
+            {
+                let rels = pkg.get_or_create_part_rels(&part);
+                rels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, "../slideLayouts/slideLayout1.xml");
+                if slide.notes.is_some() {
+                    rels.add_with_id(
+                        "rId2",
+                        template::RT_NOTES_SLIDE,
+                        &format!("../notesSlides/notesSlide{}.xml", idx + 1),
+                    );
+                }
+            }
+            // notesSlide part: links to the notes master and back to its slide.
+            if let Some(notes) = &slide.notes {
+                let np = format!("/ppt/notesSlides/notesSlide{}.xml", idx + 1);
+                pkg.content_types.add_override(&np, template::CT_NOTES_SLIDE);
+                pkg.set_part(&np, crate::slide::notes_slide_xml(notes));
+                let nrels = pkg.get_or_create_part_rels(&np);
+                nrels.add_with_id("rId1", template::RT_NOTES_MASTER, "../notesMasters/notesMaster1.xml");
+                nrels.add_with_id("rId2", template::RT_SLIDE, &format!("../slides/slide{}.xml", idx + 1));
+            }
+        }
+
+        // Shared notes master (theme-linked) when any slide has notes.
+        if has_notes {
+            pkg.content_types.add_override("/ppt/notesMasters/notesMaster1.xml", template::CT_NOTES_MASTER);
+            pkg.set_part("/ppt/notesMasters/notesMaster1.xml", template::NOTES_MASTER_XML.as_bytes().to_vec());
+            pkg.get_or_create_part_rels("/ppt/notesMasters/notesMaster1.xml")
+                .add_with_id("rId1", rel_types::THEME, "../theme/theme1.xml");
         }
 
         Ok(pkg)
