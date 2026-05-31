@@ -197,6 +197,10 @@ pub struct SlideData {
     /// slide opened from an existing deck. Lets move/delete reconstruct the
     /// slide-id list faithfully without renumbering.
     pub(crate) sld_id: Option<(u32, String)>,
+    /// For a slide duplicated from a source-backed slide: the original's part
+    /// path, whose relationships are cloned so the copy references the same
+    /// layout/media. The copy's content comes from its (cloned) `dom`.
+    pub(crate) clone_rels_from: Option<String>,
     /// Editable DOM of the slide when opened from an existing deck. Edits mutate
     /// this tree in place; save serializes it byte-faithfully (untouched content
     /// preserved). `None` for slides authored from scratch.
@@ -216,6 +220,7 @@ impl SlideData {
             dirty: false,
             source_part: None,
             sld_id: None,
+            clone_rels_from: None,
             dom: None,
             next_id: 2,
         }

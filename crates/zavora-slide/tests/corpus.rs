@@ -162,6 +162,43 @@ fn add_text_box_to_opened_slide_is_surgical() {
 }
 
 #[test]
+fn duplicate_slide_is_faithful() {
+    // Duplicating slide 0 on an opened deck materializes a new part that is a
+    // byte-clone of the original, with cloned rels; master/layouts/theme and the
+    // original slides stay byte-identical.
+    let mut p = Presentation::open(SAMPLE).unwrap();
+    let new_idx = p.duplicate_slide(0).unwrap();
+    assert_eq!(new_idx, 1);
+    assert_eq!(p.slide_count(), 4);
+    let orig = OpcPackage::open(SAMPLE).unwrap();
+    let out = reopen(p.save_to_buffer().unwrap());
+
+    // Original slides + master/layouts/theme untouched.
+    for name in orig.part_names() {
+        if name == "/ppt/presentation.xml" {
+            continue;
+        }
+        assert_eq!(orig.get_part(name), out.get_part(name), "part {name} preserved");
+    }
+    // A new slide part exists and equals the duplicated original's bytes.
+    let extra: Vec<&str> = out
+        .part_names()
+        .filter(|n| n.starts_with("/ppt/slides/slide") && n.ends_with(".xml") && orig.get_part(n).is_none())
+        .collect();
+    assert_eq!(extra.len(), 1, "exactly one new slide part");
+    assert_eq!(
+        out.get_part(extra[0]).unwrap(),
+        orig.get_part("/ppt/slides/slide1.xml").unwrap(),
+        "duplicate is a byte-clone of the original"
+    );
+    // It has cloned rels (same layout link as the original).
+    assert!(out.get_part_rels(extra[0]).is_some(), "duplicate has rels");
+    // presentation now lists 4 slides.
+    let pres = String::from_utf8(out.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
+    assert_eq!(pres.matches("<p:sldId ").count(), 4);
+}
+
+#[test]
 fn move_slide_is_faithful() {
     // Reordering slides on an opened deck rewrites only sldIdLst order; every
     // part (master/layouts/theme/all slides) stays byte-identical.

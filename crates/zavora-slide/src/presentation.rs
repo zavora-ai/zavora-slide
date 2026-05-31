@@ -166,16 +166,50 @@ impl Presentation {
     }
 
     /// Deep-copy the slide at `idx`, inserting the copy immediately after it.
+    /// On a source-backed deck the copy is materialized faithfully: its part is a
+    /// clone of the original (relationships included), so it references the same
+    /// layout/media; master/layouts/theme and all other slides stay byte-identical.
     pub fn duplicate_slide(&mut self, idx: usize) -> Result<usize> {
-        let copy = self
+        let mut copy = self
             .slides
             .get(idx)
             .ok_or_else(|| SlideError::NotFound(format!("slide index {idx}")))?
             .clone();
-        self.slides.insert(idx + 1, copy);
-        self.invalidate_source();
-        self.resync_slide_ids();
+
+        if self.source.is_some() && copy.source_part.is_some() {
+            // Faithful duplication: assign a fresh part path + sldId; clone rels
+            // from the original; new part bytes come from the (cloned) DOM. The
+            // presentation rel id is allocated during save (apply_reorder).
+            let new_part = self.fresh_slide_part_path();
+            let new_id = self.fresh_sld_id();
+            copy.clone_rels_from = copy.source_part.clone();
+            copy.source_part = Some(new_part);
+            copy.sld_id = Some((new_id, String::new()));
+            self.slides.insert(idx + 1, copy);
+            self.reordered = true;
+            self.resync_build_ids_only();
+        } else {
+            self.slides.insert(idx + 1, copy);
+            self.invalidate_source();
+            self.resync_slide_ids();
+        }
         Ok(idx + 1)
+    }
+
+    /// A slide part path not already used by any slide (e.g. /ppt/slides/slideN.xml).
+    fn fresh_slide_part_path(&self) -> String {
+        let used: std::collections::HashSet<&str> =
+            self.slides.iter().filter_map(|s| s.source_part.as_deref()).collect();
+        (1..)
+            .map(|n| format!("/ppt/slides/slide{n}.xml"))
+            .find(|p| !used.contains(p.as_str()))
+            .unwrap()
+    }
+
+    /// A numeric sldId greater than any in use (ids must be unique; PowerPoint
+    /// uses values >= 256).
+    fn fresh_sld_id(&self) -> u32 {
+        self.slides.iter().filter_map(|s| s.sld_id.as_ref().map(|(id, _)| *id)).max().unwrap_or(255) + 1
     }
 
     /// Remove the slide at `idx`. On a source-backed deck this is faithful: the
@@ -396,24 +430,64 @@ impl Presentation {
         Ok(Some(pkg))
     }
 
-    /// Rewrite the source `presentation.xml`'s `<p:sldIdLst>` to the surviving
-    /// slides (in current order) using their preserved identities, and prune any
-    /// slide parts/rels no longer referenced. Everything else stays byte-identical.
+    /// Rewrite the source `presentation.xml`'s `<p:sldIdLst>` to the current
+    /// slides (in order), materialize any duplicated slides (new part = clone of
+    /// the original, rels cloned), prune deleted slide parts/rels, and keep
+    /// everything else byte-identical.
     fn apply_reorder(&self, pkg: &mut OpcPackage) -> Result<()> {
         use zavora_slide_oxml::{Document, Node};
+
+        // Highest presentation rel id in use → base for allocating new slide rels.
+        let mut next_rid = pkg
+            .get_part_rels("/ppt/presentation.xml")
+            .map(|r| {
+                r.items
+                    .iter()
+                    .filter_map(|x| x.id.strip_prefix("rId").and_then(|s| s.parse::<u32>().ok()))
+                    .max()
+                    .unwrap_or(1)
+            })
+            .unwrap_or(1)
+            + 1;
+
+        // Effective presentation rel id per slide (clones get a fresh one).
+        let mut eff_rids: Vec<String> = Vec::with_capacity(self.slides.len());
+        for s in &self.slides {
+            if let Some(orig_part) = &s.clone_rels_from {
+                let new_part = s.source_part.as_ref().expect("duplicated slide has a part path");
+                let rid = format!("rId{next_rid}");
+                next_rid += 1;
+                // New slide part bytes from the cloned DOM.
+                if let Some(dom) = &s.dom {
+                    pkg.set_part(new_part, dom.to_bytes());
+                }
+                pkg.content_types.add_override(new_part, template::CT_SLIDE);
+                // Clone the original's part rels to the new part.
+                if let Some(orig_rels) = pkg.get_part_rels(orig_part).cloned() {
+                    pkg.part_rels.insert(new_part.clone(), orig_rels);
+                }
+                // Add presentation → new slide rel (target relative to ppt/).
+                let target = new_part.strip_prefix("/ppt/").unwrap_or(new_part);
+                pkg.get_or_create_part_rels("/ppt/presentation.xml")
+                    .add_with_id(&rid, rel_types::SLIDE, target);
+                eff_rids.push(rid);
+            } else {
+                eff_rids.push(s.sld_id.as_ref().expect("reorder requires sld_id").1.clone());
+            }
+        }
 
         let pres_xml = pkg
             .get_part("/ppt/presentation.xml")
             .ok_or_else(|| SlideError::NotFound("presentation.xml".into()))?;
         let mut doc = Document::parse(pres_xml).map_err(|e| SlideError::Unsupported(e.to_string()))?;
 
-        // Build the new <p:sldId> children from surviving slides, in order.
+        // Build the new <p:sldId> children from current slides, in order.
         let mut new_ids: Vec<Node> = Vec::new();
         let mut kept_rids: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for s in &self.slides {
-            let (id, r_id) = s.sld_id.as_ref().expect("reorder requires sld_id");
-            kept_rids.insert(r_id.clone());
-            let xml = format!("<p:sldId id=\"{id}\" r:id=\"{r_id}\"/>");
+        for (s, rid) in self.slides.iter().zip(&eff_rids) {
+            let id = s.sld_id.as_ref().expect("reorder requires sld_id").0;
+            kept_rids.insert(rid.clone());
+            let xml = format!("<p:sldId id=\"{id}\" r:id=\"{rid}\"/>");
             let frag = Document::parse(xml.as_bytes()).map_err(|e| SlideError::Unsupported(e.to_string()))?;
             new_ids.extend(frag.nodes.into_iter().filter(|n| matches!(n, Node::Element(_))));
         }
@@ -426,18 +500,16 @@ impl Presentation {
         }
         pkg.set_part("/ppt/presentation.xml", doc.to_bytes());
 
-        // Drop presentation→slide rels for deleted slides (avoid dangling targets).
+        // Drop presentation→slide rels not referenced by the new sldIdLst.
         if let Some(rels) = pkg.part_rels.get_mut("/ppt/presentation.xml") {
             let before = rels.items.len();
-            rels.items.retain(|r| {
-                r.rel_type != rel_types::SLIDE || kept_rids.contains(&r.id)
-            });
+            rels.items.retain(|r| r.rel_type != rel_types::SLIDE || kept_rids.contains(&r.id));
             if rels.items.len() != before {
-                rels.touch(); // force re-serialization of the modified rels
+                rels.touch();
             }
         }
 
-        // Prune slide parts (and their rels/content-type) no longer referenced.
+        // Prune slide parts (and rels/content-type) no longer referenced.
         let kept: std::collections::HashSet<&str> =
             self.slides.iter().filter_map(|s| s.source_part.as_deref()).collect();
         let all_slide_parts: Vec<String> = pkg
