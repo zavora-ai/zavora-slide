@@ -1,0 +1,16 @@
+[package]
+name = "zavora-slide-layout"
+description = "Layout engine for positioning PresentationML shapes, text, and placeholders"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+zavora-slide-oxml = { workspace = true }
+thiserror = { workspace = true }

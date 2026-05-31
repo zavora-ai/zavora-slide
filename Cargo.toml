@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/zavora-slide-opc",
+    "crates/zavora-slide-oxml",
+    "crates/zavora-slide",
+    "crates/zavora-slide-layout",
+    "crates/zavora-slide-render",
+    "crates/zavora-slide-pdf",
+    "crates/zavora-slide-cli",
+]
+exclude = [
+    "crates/zavora-slide-wasm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.93"
+authors = ["James Karanja Maina"]
+repository = "https://github.com/zavora-ai/zavora-slide"
+homepage = "https://zavora.ai"
+keywords = ["pptx", "powerpoint", "presentation", "ooxml", "slides"]
+categories = ["parser-implementations", "rendering"]
+
+[workspace.dependencies]
+# Internal crates
+zavora-slide-opc = { path = "crates/zavora-slide-opc", version = "0.1.0" }
+zavora-slide-oxml = { path = "crates/zavora-slide-oxml", version = "0.1.0" }
+zavora-slide = { path = "crates/zavora-slide", version = "0.1.0" }
+zavora-slide-layout = { path = "crates/zavora-slide-layout", version = "0.1.0" }
+zavora-slide-render = { path = "crates/zavora-slide-render", version = "0.1.0" }
+zavora-slide-pdf = { path = "crates/zavora-slide-pdf", version = "0.1.0" }
+
+# External dependencies
+zip = "8.1"
+quick-xml = "0.37"
+thiserror = "2"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"

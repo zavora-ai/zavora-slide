@@ -1,0 +1,17 @@
+[package]
+name = "zavora-slide"
+description = "High-level API for creating, reading, and converting PowerPoint (.pptx) presentations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+zavora-slide-opc = { workspace = true }
+zavora-slide-oxml = { workspace = true }
+thiserror = { workspace = true }

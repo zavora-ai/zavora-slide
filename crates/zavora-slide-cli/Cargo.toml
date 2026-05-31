@@ -1,0 +1,20 @@
+[package]
+name = "zavora-slide-cli"
+description = "CLI tool for inspecting and converting PowerPoint (.pptx) presentations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "zslide"
+path = "src/main.rs"
+
+[dependencies]
+zavora-slide = { workspace = true }
+clap = { version = "4", features = ["derive"] }

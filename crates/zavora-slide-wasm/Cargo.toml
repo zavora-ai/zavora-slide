@@ -1,0 +1,16 @@
+[package]
+name = "zavora-slide-wasm"
+description = "WASM bindings for zavora-slide (web slides client substrate)"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.93"
+authors = ["James Karanja Maina"]
+repository = "https://github.com/zavora-ai/zavora-slide"
+homepage = "https://zavora.ai"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+zavora-slide = { path = "../zavora-slide", version = "0.1.0" }
