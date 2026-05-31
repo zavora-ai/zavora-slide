@@ -133,6 +133,22 @@ impl Presentation {
         }
     }
 
+    /// Render the whole deck to a PDF (one page per slide) and return the bytes.
+    pub fn to_pdf_bytes(&self) -> Result<Vec<u8>> {
+        let scenes: Vec<_> = self
+            .slides
+            .iter()
+            .map(|s| s.to_scene(self.pres.slide_size.cx, self.pres.slide_size.cy))
+            .collect();
+        zavora_slide_pdf::scenes_to_pdf(&scenes).map_err(|e| SlideError::Unsupported(format!("pdf: {e}")))
+    }
+
+    /// Save the whole deck as a PDF (one page per slide).
+    pub fn save_pdf<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        std::fs::write(path, self.to_pdf_bytes()?)?;
+        Ok(())
+    }
+
     /// A text outline of the deck: per slide, its shape text and any notes.
     pub fn to_markdown(&self) -> String {
         let mut out = String::new();
