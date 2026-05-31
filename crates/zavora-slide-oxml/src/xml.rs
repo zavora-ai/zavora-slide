@@ -91,6 +91,39 @@ impl Element {
         self.attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_slice())
     }
 
+    /// Set (or add) an attribute, marking the start tag for regeneration.
+    pub fn set_attr(&mut self, name: &[u8], value: &[u8]) {
+        self.dirty = true;
+        if let Some(slot) = self.attrs.iter_mut().find(|(k, _)| k == name) {
+            slot.1 = value.to_vec();
+        } else {
+            self.attrs.push((name.to_vec(), value.to_vec()));
+        }
+    }
+
+    /// Concatenated text of this element's immediate text children, XML-unescaped
+    /// (for a leaf like `<a:t>`, this is its text content).
+    pub fn text_content(&self) -> String {
+        let mut s = String::new();
+        for c in &self.children {
+            if let Node::Raw(b) = c {
+                s.push_str(&unescape(b));
+            }
+        }
+        s
+    }
+
+    /// Replace this element's content with a single XML-escaped text node,
+    /// preserving the element's own tags. Converts a self-closing tag to an
+    /// open/close pair so the text has somewhere to live.
+    pub fn set_text_content(&mut self, text: &str) {
+        self.children = vec![Node::Raw(escape(text).into_bytes())];
+        if self.self_closing {
+            self.self_closing = false;
+            self.dirty = true;
+        }
+    }
+
     fn write(&self, out: &mut Vec<u8>) {
         if self.dirty {
             out.push(b'<');
@@ -242,6 +275,25 @@ fn parse_attrs(e: &quick_xml::events::BytesStart) -> Result<Vec<(Vec<u8>, Vec<u8
     Ok(out)
 }
 
+/// XML-escape text content (the five predefined entities).
+fn escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+/// Reverse the predefined entities (sufficient for `<a:t>` text content).
+fn unescape(b: &[u8]) -> String {
+    String::from_utf8_lossy(b)
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +333,39 @@ mod tests {
         assert_eq!(ph.attr(b"type").unwrap(), b"title");
         assert_eq!(ph.attr(b"idx").unwrap(), b"1");
     }
+    #[test]
+    fn set_text_preserves_siblings_and_escapes() {
+        // Editing one <a:t> must leave the sibling run byte-identical.
+        let src = br#"<a:p><a:r><a:rPr b="1"/><a:t>old</a:t></a:r><a:r><a:t>keep</a:t></a:r></a:p>"#;
+        let mut doc = Document::parse(src).unwrap();
+        let root = doc.root_mut().unwrap();
+        let first_run = root.children_named_mut(b"r").next().unwrap();
+        let t = first_run.children_named_mut(b"t").next().unwrap();
+        assert_eq!(t.text_content(), "old");
+        t.set_text_content("a < b & c");
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert!(s.contains("<a:t>a &lt; b &amp; c</a:t>"), "got {s}");
+        assert!(s.contains(r#"<a:rPr b="1"/>"#), "rPr verbatim: {s}");
+        assert!(s.contains("<a:r><a:t>keep</a:t></a:r>"), "2nd run verbatim: {s}");
+    }
+
+    #[test]
+    fn set_text_on_self_closing_opens_the_tag() {
+        let mut doc = Document::parse(br#"<a:t/>"#).unwrap();
+        doc.root_mut().unwrap().set_text_content("hi");
+        assert_eq!(doc.to_bytes(), b"<a:t>hi</a:t>");
+    }
+
+    #[test]
+    fn set_attr_regenerates_only_that_tag() {
+        let mut doc = Document::parse(br#"<a><b x="1"/><c y="2"/></a>"#).unwrap();
+        let b = doc.root_mut().unwrap().children_named_mut(b"b").next().unwrap();
+        b.set_attr(b"x", b"9");
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert!(s.contains(r#"<b x="9"/>"#), "got {s}");
+        assert!(s.contains(r#"<c y="2"/>"#), "sibling verbatim: {s}");
+    }
+
 
     #[test]
     fn dirty_element_regenerates_clean_siblings_verbatim() {
