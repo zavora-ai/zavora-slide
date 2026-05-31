@@ -86,12 +86,73 @@ impl ImageMedia {
     }
 }
 
+/// Identifies a table within a slide (its index in `SlideData::tables`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TableId(pub usize);
+
+/// A table rendered as a `p:graphicFrame` / `a:tbl`.
+#[derive(Debug, Clone)]
+pub struct Table {
+    pub id: u32,
+    pub x: i64,
+    pub y: i64,
+    pub cx: i64,
+    pub cy: i64,
+    pub rows: usize,
+    pub cols: usize,
+    /// Cell text in row-major order (`rows * cols` entries).
+    pub cells: Vec<String>,
+}
+
+impl Table {
+    fn esc(s: &str) -> String {
+        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    }
+
+    fn graphic_frame_xml(&self) -> String {
+        let col_w = if self.cols > 0 { self.cx / self.cols as i64 } else { self.cx };
+        let row_h = if self.rows > 0 { self.cy / self.rows as i64 } else { self.cy };
+        let grid: String = (0..self.cols)
+            .map(|_| format!("<a:gridCol w=\"{col_w}\"/>"))
+            .collect();
+        let mut rows_xml = String::new();
+        for r in 0..self.rows {
+            rows_xml.push_str(&format!("<a:tr h=\"{row_h}\">"));
+            for c in 0..self.cols {
+                let text = self.cells.get(r * self.cols + c).map(String::as_str).unwrap_or("");
+                rows_xml.push_str(&format!(
+                    "<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{}</a:t></a:r></a:p>\
+                     </a:txBody><a:tcPr/></a:tc>",
+                    Self::esc(text)
+                ));
+            }
+            rows_xml.push_str("</a:tr>");
+        }
+        format!(
+            "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"{id}\" name=\"Table {id}\"/>\
+             <p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>\
+             <p:xfrm><a:off x=\"{x}\" y=\"{y}\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></p:xfrm>\
+             <a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\">\
+             <a:tbl><a:tblPr firstRow=\"1\" bandRow=\"1\">\
+             <a:tableStyleId>{{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}}</a:tableStyleId></a:tblPr>\
+             <a:tblGrid>{grid}</a:tblGrid>{rows_xml}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>",
+            id = self.id,
+            x = self.x,
+            y = self.y,
+            cx = self.cx,
+            cy = self.cy
+        )
+    }
+}
+
 /// Stored slide content: the shapes injected into the slide's `spTree`.
 #[derive(Debug, Clone, Default)]
 pub struct SlideData {
     pub shapes: Vec<Shape>,
     /// Embedded images (rendered as `p:pic` and written as media parts on save).
     pub images: Vec<ImageMedia>,
+    /// Tables (rendered as `p:graphicFrame` / `a:tbl`).
+    pub tables: Vec<Table>,
     /// Speaker notes text, if any (emitted as a notesSlide part on save).
     pub notes: Option<String>,
     /// Optional slide background fill.
@@ -102,7 +163,14 @@ pub struct SlideData {
 
 impl SlideData {
     pub fn new() -> Self {
-        Self { shapes: Vec::new(), images: Vec::new(), notes: None, background: None, next_id: 2 }
+        Self {
+            shapes: Vec::new(),
+            images: Vec::new(),
+            tables: Vec::new(),
+            notes: None,
+            background: None,
+            next_id: 2,
+        }
     }
 
     fn alloc_id(&mut self) -> u32 {
@@ -122,6 +190,7 @@ impl SlideData {
     pub fn to_xml(&self) -> Vec<u8> {
         let shapes: String = self.shapes.iter().map(Shape::to_xml).collect();
         let pics: String = self.images.iter().map(ImageMedia::pic_xml).collect();
+        let tbls: String = self.tables.iter().map(Table::graphic_frame_xml).collect();
         let bg = self.background.as_ref().map(Fill::bg_xml).unwrap_or_default();
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
@@ -130,7 +199,7 @@ impl SlideData {
              xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
              <p:cSld>{bg}<p:spTree>\
              <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
-             <p:grpSpPr/>{shapes}{pics}</p:spTree></p:cSld>\
+             <p:grpSpPr/>{shapes}{pics}{tbls}</p:spTree></p:cSld>\
              <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
         )
         .into_bytes()
@@ -211,6 +280,40 @@ impl Slide<'_> {
         let sp = Shape::auto_shape(id, preset.prst(), x.0, y.0, w.0, h.0);
         self.data.shapes.push(sp);
         self.data.shapes.last_mut().unwrap()
+    }
+
+    /// Add a `rows`×`cols` table at the given position/size. Returns its id for
+    /// addressing cells via [`Slide::set_table_cell`].
+    pub fn add_table(&mut self, rows: usize, cols: usize, x: Emu, y: Emu, w: Emu, h: Emu) -> TableId {
+        let id = self.data.alloc_id();
+        self.data.tables.push(Table {
+            id,
+            x: x.0,
+            y: y.0,
+            cx: w.0,
+            cy: h.0,
+            rows,
+            cols,
+            cells: vec![String::new(); rows * cols],
+        });
+        TableId(self.data.tables.len() - 1)
+    }
+
+    /// Set the text of a table cell.
+    pub fn set_table_cell(&mut self, table: TableId, row: usize, col: usize, text: &str) -> Result<()> {
+        let t = self
+            .data
+            .tables
+            .get_mut(table.0)
+            .ok_or_else(|| SlideError::NotFound(format!("table {}", table.0)))?;
+        if row >= t.rows || col >= t.cols {
+            return Err(SlideError::InvalidInput(format!(
+                "cell ({row},{col}) out of bounds for {}x{} table",
+                t.rows, t.cols
+            )));
+        }
+        t.cells[row * t.cols + col] = text.to_string();
+        Ok(())
     }
 
     /// Set (or replace) the slide's speaker notes.
@@ -463,5 +566,23 @@ mod tests {
         assert!(xml.contains("prst=\"ellipse\""));
         assert!(xml.contains("<a:srgbClr val=\"00AA00\"/>"));
         assert!(xml.contains("<a:ln w=\"25400\">"));
+    }
+
+    #[test]
+    fn add_table_and_set_cells() {
+        let mut d = SlideData::new();
+        {
+            let mut s = slide(&mut d);
+            let t = s.add_table(2, 2, Emu::inches(1.0), Emu::inches(1.0), Emu::inches(4.0), Emu::inches(2.0));
+            s.set_table_cell(t, 0, 0, "H1").unwrap();
+            s.set_table_cell(t, 1, 1, "v & w").unwrap();
+            assert!(s.set_table_cell(t, 5, 0, "x").is_err());
+        }
+        let xml = String::from_utf8(d.to_xml()).unwrap();
+        assert!(xml.contains("graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\""));
+        assert!(xml.contains("<a:gridCol"));
+        assert!(xml.contains("<a:t>H1</a:t>"));
+        assert!(xml.contains("v &amp; w"));
+        assert_eq!(xml.matches("<a:tr ").count(), 2);
     }
 }
