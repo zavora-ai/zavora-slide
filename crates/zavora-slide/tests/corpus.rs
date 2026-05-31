@@ -142,6 +142,26 @@ fn editing_is_surgical_dom_based() {
 }
 
 #[test]
+fn add_text_box_to_opened_slide_is_surgical() {
+    // Adding a text box to slide 0 changes only that slide; the new box appears.
+    let mut p = Presentation::open(SAMPLE).unwrap();
+    p.slide_mut(0).unwrap().add_text_box(
+        "Inserted box",
+        zavora_slide::Emu::inches(1.0),
+        zavora_slide::Emu::inches(1.0),
+        zavora_slide::Emu::inches(3.0),
+        zavora_slide::Emu::inches(1.0),
+    );
+    let orig = package_entries(&OpcPackage::open(SAMPLE).unwrap());
+    let out = package_entries(&reopen(p.save_to_buffer().unwrap()));
+    let diffs: Vec<&String> = orig.keys().filter(|k| orig.get(*k) != out.get(*k)).collect();
+    assert_eq!(diffs, vec!["/ppt/slides/slide1.xml"], "only edited slide changes");
+    let s1 = String::from_utf8(out["/ppt/slides/slide1.xml"].clone()).unwrap();
+    assert!(s1.contains("<a:t>Inserted box</a:t>"), "new box present: {s1}");
+    assert!(s1.contains("Corpus Sample"), "original title preserved");
+}
+
+#[test]
 fn structural_edit_falls_back_to_rebuild() {
     // Adding a slide is a structural change → full rebuild from the model.
     let mut p = Presentation::open(SAMPLE).unwrap();

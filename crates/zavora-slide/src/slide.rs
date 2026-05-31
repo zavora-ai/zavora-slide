@@ -452,8 +452,12 @@ impl Slide<'_> {
     }
 
     /// Add a positioned text box. Returns a mutable reference to the shape so
-    /// callers can adjust run formatting.
+    /// callers can adjust run formatting. On an opened slide the box is also
+    /// appended to the slide DOM so it is preserved on save.
     pub fn add_text_box(&mut self, text: &str, x: Emu, y: Emu, w: Emu, h: Emu) -> &mut Shape {
+        if let Some(dom) = self.data.dom.as_mut() {
+            let _ = dom.add_text_box(text, x.0, y.0, w.0, h.0);
+        }
         let id = self.data.alloc_id();
         let body = TextBody { paragraphs: vec![Paragraph { runs: vec![Run::new(text)], ..Default::default() }] };
         let sp = Shape::text_box(id, x.0, y.0, w.0, h.0, body);

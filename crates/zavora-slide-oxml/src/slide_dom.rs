@@ -143,6 +143,42 @@ impl SlideDom {
         Ok(())
     }
 
+    /// Append a text box (`p:sp`, non-placeholder) to the shape tree at the given
+    /// EMU position/size, with one paragraph of `text`. Existing shapes are
+    /// untouched. Returns the new shape's id.
+    pub fn add_text_box(&mut self, text: &str, x: i64, y: i64, cx: i64, cy: i64) -> Result<u32> {
+        let id = self.next_shape_id();
+        let sp_xml = format!(
+            "<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"TextBox {id}\"/>\
+             <p:cNvSpPr txBox=\"1\"/><p:nvPr/></p:nvSpPr>\
+             <p:spPr><a:xfrm><a:off x=\"{x}\" y=\"{y}\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm>\
+             <a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr>\
+             <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>{}</a:t></a:r></a:p></p:txBody></p:sp>",
+            crate::xml::escape_public(text)
+        );
+        let doc = Document::parse(sp_xml.as_bytes())?;
+        let sp = doc
+            .nodes
+            .into_iter()
+            .find(|n| matches!(n, Node::Element(_)))
+            .ok_or_else(|| OxmlError::Parse("authored sp did not parse".into()))?;
+        let tree = self
+            .sp_tree_mut()
+            .ok_or_else(|| OxmlError::Parse("slide has no spTree".into()))?;
+        tree.children.push(sp);
+        Ok(id)
+    }
+
+    /// Next free shape id = 1 + max existing `p:cNvPr@id` (ids must be unique
+    /// within the slide; the group shape is id 1).
+    fn next_shape_id(&self) -> u32 {
+        let mut max = 1u32;
+        if let Some(tree) = self.sp_tree() {
+            collect_max_cnvpr_id(tree, &mut max);
+        }
+        max + 1
+    }
+
     /// Apply character formatting to every run of a placeholder (by type, e.g.
     /// "title" or "body"), mutating each run's `a:rPr` in place. Only the fields
     /// set in `fmt` change; all other run/shape content is preserved.
@@ -291,6 +327,20 @@ fn new_element(name: &[u8]) -> Element {
         children: Vec::new(),
     }
 }
+/// Recursively track the maximum `p:cNvPr@id` in a subtree.
+fn collect_max_cnvpr_id(el: &Element, max: &mut u32) {
+    if el.local_name() == b"cNvPr"
+        && let Some(id) = el.attr(b"id").and_then(|v| std::str::from_utf8(v).ok()?.parse::<u32>().ok())
+    {
+        *max = (*max).max(id);
+    }
+    for c in &el.children {
+        if let Node::Element(e) = c {
+            collect_max_cnvpr_id(e, max);
+        }
+    }
+}
+
 
 /// Concatenated text of a paragraph's runs (`a:r > a:t`).
 fn paragraph_text(p: &Element) -> String {
@@ -404,6 +454,23 @@ mod tests {
         assert!(s.contains(r#"<a:r><a:rPr sz="2000"/><a:t>Bullet two</a:t></a:r>"#));
         // Title shape untouched.
         assert!(s.contains(r#"<a:rPr lang="en-US" b="1"/>"#), "title verbatim: {s}");
+    }
+
+    #[test]
+    fn add_text_box_appends_with_unique_id_preserving_existing() {
+        let mut dom = SlideDom::parse(SLIDE).unwrap();
+        let id = dom.add_text_box("Hello box", 100, 200, 300, 400).unwrap();
+        // Existing shapes use ids 2 and 3 → new id is 4.
+        assert_eq!(id, 4);
+        let s = String::from_utf8(dom.to_bytes()).unwrap();
+        assert!(s.contains(r#"<p:cNvPr id="4" name="TextBox 4"/>"#), "{s}");
+        assert!(s.contains("<a:t>Hello box</a:t>"));
+        assert!(s.contains(r#"txBox="1""#));
+        // Both original shapes preserved verbatim.
+        assert!(s.contains("<a:t>Old Title</a:t>"));
+        assert!(s.contains("<a:t>Bullet one</a:t>"));
+        // New shape sits inside the spTree.
+        assert!(dom.shapes().count() == 3, "now three p:sp shapes");
     }
 
     #[test]

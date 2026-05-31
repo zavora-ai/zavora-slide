@@ -275,6 +275,11 @@ fn parse_attrs(e: &quick_xml::events::BytesStart) -> Result<Vec<(Vec<u8>, Vec<u8
     Ok(out)
 }
 
+/// Public XML-escape for sibling modules authoring element text.
+pub fn escape_public(s: &str) -> String {
+    escape(s)
+}
+
 /// XML-escape text content (the five predefined entities).
 fn escape(s: &str) -> String {
     s.replace('&', "&amp;")
