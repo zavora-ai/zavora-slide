@@ -16,7 +16,7 @@ mod units;
 
 pub use error::{Result, SlideError};
 pub use presentation::Presentation;
-pub use slide::{Bullet, Fill, ShapeInfo, Slide, SlideData};
+pub use slide::{Bullet, Fill, ImageSrc, ShapeInfo, Slide, SlideData};
 pub use theme::ThemeSpec;
 pub use units::{Emu, Layout, RenderFormat, ShapePreset, SlideSize};
 

@@ -8,7 +8,7 @@
 
 use zavora_slide_oxml::{Paragraph, Run, RunProps, Shape, TextBody};
 
-use crate::error::Result;
+use crate::error::{Result, SlideError};
 use crate::units::Emu;
 
 /// One bullet line for [`Slide::add_bullets`].
@@ -46,10 +46,52 @@ impl Fill {
     }
 }
 
+/// Source of an image to embed.
+#[derive(Debug, Clone)]
+pub enum ImageSrc {
+    /// Read from a filesystem path (extension determines the format).
+    Path(std::path::PathBuf),
+    /// Raw bytes with an explicit extension ("png", "jpg", "jpeg").
+    Bytes { data: Vec<u8>, ext: String },
+}
+
+/// An embedded image: its media bytes/extension plus placement.
+#[derive(Debug, Clone)]
+pub struct ImageMedia {
+    pub ext: String,
+    pub data: Vec<u8>,
+    pub embed_rid: String,
+    pub id: u32,
+    pub x: i64,
+    pub y: i64,
+    pub cx: i64,
+    pub cy: i64,
+}
+
+impl ImageMedia {
+    fn pic_xml(&self) -> String {
+        format!(
+            "<p:pic><p:nvPicPr><p:cNvPr id=\"{id}\" name=\"Picture {id}\"/>\
+             <p:cNvPicPr><a:picLocks noChangeAspect=\"1\"/></p:cNvPicPr><p:nvPr/></p:nvPicPr>\
+             <p:blipFill><a:blip r:embed=\"{rid}\"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>\
+             <p:spPr><a:xfrm><a:off x=\"{x}\" y=\"{y}\"/><a:ext cx=\"{cx}\" cy=\"{cy}\"/></a:xfrm>\
+             <a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>",
+            id = self.id,
+            rid = self.embed_rid,
+            x = self.x,
+            y = self.y,
+            cx = self.cx,
+            cy = self.cy
+        )
+    }
+}
+
 /// Stored slide content: the shapes injected into the slide's `spTree`.
 #[derive(Debug, Clone, Default)]
 pub struct SlideData {
     pub shapes: Vec<Shape>,
+    /// Embedded images (rendered as `p:pic` and written as media parts on save).
+    pub images: Vec<ImageMedia>,
     /// Speaker notes text, if any (emitted as a notesSlide part on save).
     pub notes: Option<String>,
     /// Optional slide background fill.
@@ -60,7 +102,7 @@ pub struct SlideData {
 
 impl SlideData {
     pub fn new() -> Self {
-        Self { shapes: Vec::new(), notes: None, background: None, next_id: 2 }
+        Self { shapes: Vec::new(), images: Vec::new(), notes: None, background: None, next_id: 2 }
     }
 
     fn alloc_id(&mut self) -> u32 {
@@ -79,6 +121,7 @@ impl SlideData {
     /// Serialize to a complete slide part.
     pub fn to_xml(&self) -> Vec<u8> {
         let shapes: String = self.shapes.iter().map(Shape::to_xml).collect();
+        let pics: String = self.images.iter().map(ImageMedia::pic_xml).collect();
         let bg = self.background.as_ref().map(Fill::bg_xml).unwrap_or_default();
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
@@ -87,7 +130,7 @@ impl SlideData {
              xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
              <p:cSld>{bg}<p:spTree>\
              <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
-             <p:grpSpPr/>{shapes}</p:spTree></p:cSld>\
+             <p:grpSpPr/>{shapes}{pics}</p:spTree></p:cSld>\
              <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
         )
         .into_bytes()
@@ -164,6 +207,39 @@ impl Slide<'_> {
     /// Set (or replace) the slide's speaker notes.
     pub fn set_notes(&mut self, text: &str) {
         self.data.notes = Some(text.to_string());
+    }
+
+    /// Embed an image at the given EMU position/size. PNG and JPEG supported.
+    pub fn add_image(&mut self, src: ImageSrc, x: Emu, y: Emu, w: Emu, h: Emu) -> Result<()> {
+        let (data, ext) = match src {
+            ImageSrc::Path(p) => {
+                let ext = p
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| e.to_ascii_lowercase())
+                    .ok_or_else(|| SlideError::InvalidInput("image path has no extension".into()))?;
+                let data = std::fs::read(&p)?;
+                (data, ext)
+            }
+            ImageSrc::Bytes { data, ext } => (data, ext.to_ascii_lowercase()),
+        };
+        if !matches!(ext.as_str(), "png" | "jpg" | "jpeg") {
+            return Err(SlideError::InvalidInput(format!("unsupported image type '{ext}'")));
+        }
+        let id = self.data.alloc_id();
+        // Embed rel ids start at rId10 to stay clear of layout(rId1)/notes(rId2).
+        let embed_rid = format!("rId{}", 10 + self.data.images.len());
+        self.data.images.push(ImageMedia {
+            ext,
+            data,
+            embed_rid,
+            id,
+            x: x.0,
+            y: y.0,
+            cx: w.0,
+            cy: h.0,
+        });
+        Ok(())
     }
 
     /// Set the slide background fill.
@@ -330,5 +406,38 @@ mod tests {
         let tree = xml.find("<p:spTree>").unwrap();
         assert!(bg < tree);
         assert!(xml.contains("<a:srgbClr val=\"102030\"/>"));
+    }
+
+    #[test]
+    fn add_image_from_bytes_emits_pic() {
+        let mut d = SlideData::new();
+        slide(&mut d)
+            .add_image(
+                ImageSrc::Bytes { data: vec![1, 2, 3], ext: "PNG".into() },
+                Emu::inches(1.0),
+                Emu::inches(1.0),
+                Emu::inches(2.0),
+                Emu::inches(2.0),
+            )
+            .unwrap();
+        assert_eq!(d.images.len(), 1);
+        assert_eq!(d.images[0].ext, "png");
+        assert_eq!(d.images[0].embed_rid, "rId10");
+        let xml = String::from_utf8(d.to_xml()).unwrap();
+        assert!(xml.contains("<p:pic>"));
+        assert!(xml.contains("r:embed=\"rId10\""));
+    }
+
+    #[test]
+    fn add_image_rejects_unsupported_type() {
+        let mut d = SlideData::new();
+        let r = slide(&mut d).add_image(
+            ImageSrc::Bytes { data: Vec::<u8>::new(), ext: "gif".into() },
+            Emu::inches(0.0),
+            Emu::inches(0.0),
+            Emu::inches(1.0),
+            Emu::inches(1.0),
+        );
+        assert!(r.is_err());
     }
 }

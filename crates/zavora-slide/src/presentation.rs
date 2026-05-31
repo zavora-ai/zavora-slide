@@ -232,6 +232,22 @@ impl Presentation {
                         &format!("../notesSlides/notesSlide{}.xml", idx + 1),
                     );
                 }
+                for img in &slide.images {
+                    rels.add_with_id(
+                        &img.embed_rid,
+                        rel_types::IMAGE,
+                        &format!("../media/image{}_{}.{}", idx + 1, img.id, img.ext),
+                    );
+                }
+            }
+            // Image media parts (default content types for png/jpeg).
+            for img in &slide.images {
+                let ct_ext = if img.ext == "jpg" { "jpeg" } else { img.ext.as_str() };
+                pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                pkg.set_part(
+                    &format!("/ppt/media/image{}_{}.{}", idx + 1, img.id, img.ext),
+                    img.data.clone(),
+                );
             }
             // notesSlide part: links to the notes master and back to its slide.
             if let Some(notes) = &slide.notes {
