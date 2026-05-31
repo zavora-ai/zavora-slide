@@ -20,8 +20,6 @@ pub struct Presentation {
     layout: RawPart,
     theme: RawPart,
     slides: Vec<SlideData>,
-    /// Next numeric slide id for `sldIdLst` (PowerPoint starts at 256).
-    next_slide_id: u32,
 }
 
 impl Presentation {
@@ -35,7 +33,6 @@ impl Presentation {
             layout: RawPart::from_xml(template::SLIDE_LAYOUT_XML.as_bytes()),
             theme: RawPart::from_xml(template::THEME_XML.as_bytes()),
             slides: Vec::new(),
-            next_slide_id: 256,
         }
     }
 
@@ -57,17 +54,56 @@ impl Presentation {
         self.theme = RawPart { xml: theme.build_theme_xml() };
     }
 
+    /// Rebuild `sldIdLst` from the current slide order: slide N (0-based) gets
+    /// numeric id 256+N and presentation rel id rId(N+2) (rId1 is the master).
+    /// Called after every structural mutation so ids/rels stay consistent.
+    fn resync_slide_ids(&mut self) {
+        self.pres.slide_ids = (0..self.slides.len())
+            .map(|i| SlideIdEntry { id: 256 + i as u32, r_id: format!("rId{}", i + 2) })
+            .collect();
+    }
+
     /// Append a blank slide bound to the (single, Phase 0) layout. Returns the
     /// new slide's 0-based index. `_layout` is accepted for API stability;
     /// per-layout placeholder geometry lands in later phases.
     pub fn add_slide(&mut self, _layout: Layout) -> usize {
-        let idx = self.slides.len();
         self.slides.push(SlideData::new());
-        let id = self.next_slide_id;
-        self.next_slide_id += 1;
-        // Presentation-part rel id for this slide: rId(2 + idx) — rId1 is the master.
-        self.pres.slide_ids.push(SlideIdEntry { id, r_id: format!("rId{}", idx + 2) });
-        idx
+        self.resync_slide_ids();
+        self.slides.len() - 1
+    }
+
+    /// Deep-copy the slide at `idx`, inserting the copy immediately after it.
+    pub fn duplicate_slide(&mut self, idx: usize) -> Result<usize> {
+        let copy = self
+            .slides
+            .get(idx)
+            .ok_or_else(|| SlideError::NotFound(format!("slide index {idx}")))?
+            .clone();
+        self.slides.insert(idx + 1, copy);
+        self.resync_slide_ids();
+        Ok(idx + 1)
+    }
+
+    /// Remove the slide at `idx`.
+    pub fn delete_slide(&mut self, idx: usize) -> Result<()> {
+        if idx >= self.slides.len() {
+            return Err(SlideError::NotFound(format!("slide index {idx}")));
+        }
+        self.slides.remove(idx);
+        self.resync_slide_ids();
+        Ok(())
+    }
+
+    /// Move the slide at `from` to position `to`.
+    pub fn move_slide(&mut self, from: usize, to: usize) -> Result<()> {
+        let n = self.slides.len();
+        if from >= n || to >= n {
+            return Err(SlideError::NotFound(format!("slide index {}", from.max(to))));
+        }
+        let s = self.slides.remove(from);
+        self.slides.insert(to, s);
+        self.resync_slide_ids();
+        Ok(())
     }
 
     /// Borrow a slide for editing (title, bullets, text boxes).
@@ -243,6 +279,38 @@ mod tests {
         assert_eq!(p.add_slide(Layout::Blank), 1);
         assert_eq!(p.slide_count(), 2);
         assert_eq!(p.pres.slide_ids.len(), 2);
+    }
+
+    #[test]
+    fn duplicate_delete_move_keep_ids_consistent() {
+        let mut p = Presentation::new();
+        p.add_slide(Layout::Blank); // 0
+        p.add_slide(Layout::Blank); // 1
+        p.slide_mut(0).unwrap().set_title("A").unwrap();
+        p.slide_mut(1).unwrap().set_title("B").unwrap();
+
+        // Duplicate slide 0 → copy at index 1 (content deep-copied).
+        assert_eq!(p.duplicate_slide(0).unwrap(), 1);
+        assert_eq!(p.slide_count(), 3);
+        assert_eq!(p.slide_mut(1).unwrap().text(), "A");
+
+        // Move the copy (1) to the end (2).
+        p.move_slide(1, 2).unwrap();
+        assert_eq!(p.slide_mut(2).unwrap().text(), "A");
+
+        // Delete first slide.
+        p.delete_slide(0).unwrap();
+        assert_eq!(p.slide_count(), 2);
+
+        // Slide ids are contiguous and rel-ids match index.
+        assert_eq!(p.pres.slide_ids.len(), 2);
+        assert_eq!(p.pres.slide_ids[0].r_id, "rId2");
+        assert_eq!(p.pres.slide_ids[1].r_id, "rId3");
+
+        // Out-of-range ops error.
+        assert!(p.delete_slide(9).is_err());
+        assert!(p.duplicate_slide(9).is_err());
+        assert!(p.move_slide(0, 9).is_err());
     }
 
     #[test]
