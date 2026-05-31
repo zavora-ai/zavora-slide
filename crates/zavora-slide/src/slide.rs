@@ -365,6 +365,21 @@ impl Slide<'_> {
 
     /// Set the slide title (creates or replaces the title placeholder).
     pub fn set_title(&mut self, text: &str) -> Result<()> {
+        // Opened slides: mutate the lossless DOM in place (surgical, preserves
+        // all other content). Falls through to the build model if the slide has
+        // no title placeholder in its DOM.
+        if let Some(dom) = self.data.dom.as_mut()
+            && dom.set_title(text).is_ok()
+        {
+            self.sync_build_title(text);
+            return Ok(());
+        }
+        self.sync_build_title(text);
+        Ok(())
+    }
+
+    /// Update the build model's title (keeps render/markdown read paths current).
+    fn sync_build_title(&mut self, text: &str) {
         let body = TextBody { paragraphs: vec![Paragraph { runs: vec![Run::new(text)], ..Default::default() }] };
         if let Some(sp) = self.data.find_ph("title") {
             sp.body = body;
@@ -374,11 +389,28 @@ impl Slide<'_> {
             sp.xfrm = Some(self.title_box());
             self.data.shapes.push(sp);
         }
-        Ok(())
     }
 
     /// Populate the body placeholder with one paragraph per bullet.
     pub fn add_bullets(&mut self, items: &[Bullet]) -> Result<()> {
+        if let Some(dom) = self.data.dom.as_mut() {
+            let pairs: Vec<(String, u8)> = items.iter().map(|b| (b.text.clone(), b.level)).collect();
+            if dom.set_body_bullets(&pairs).is_ok() {
+                self.sync_build_bullets(items);
+                return Ok(());
+            }
+        }
+        self.sync_build_bullets(items);
+        Ok(())
+    }
+
+    /// Crate-internal: populate only the build model during open (no DOM touch).
+    pub(crate) fn sync_build_bullets_public(&mut self, items: &[Bullet]) {
+        self.sync_build_bullets(items);
+    }
+
+    /// Update the build model's body bullets (render/markdown read paths).
+    fn sync_build_bullets(&mut self, items: &[Bullet]) {
         let paragraphs = items
             .iter()
             .map(|b| Paragraph {
@@ -396,7 +428,6 @@ impl Slide<'_> {
             sp.xfrm = Some(self.body_box());
             self.data.shapes.push(sp);
         }
-        Ok(())
     }
 
     /// Add a positioned text box. Returns a mutable reference to the shape so

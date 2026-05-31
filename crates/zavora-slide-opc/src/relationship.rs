@@ -44,6 +44,9 @@ pub struct Relationship {
 pub struct Relationships {
     pub items: Vec<Relationship>,
     next_id: u32,
+    /// Original bytes (when parsed), emitted verbatim by `to_xml` until a
+    /// mutation clears them — so untouched `.rels` round-trip byte-for-byte.
+    raw: Option<Vec<u8>>,
 }
 
 impl Relationships {
@@ -51,6 +54,7 @@ impl Relationships {
         Self {
             items: Vec::new(),
             next_id: 1,
+            raw: None,
         }
     }
 
@@ -119,11 +123,15 @@ impl Relationships {
         Ok(Relationships {
             items,
             next_id: max_id + 1,
+            raw: Some(xml.to_vec()),
         })
     }
 
-    /// Serialize to XML bytes.
+    /// Serialize to XML bytes (verbatim when parsed and unmodified).
     pub fn to_xml(&self) -> Result<Vec<u8>> {
+        if let Some(raw) = &self.raw {
+            return Ok(raw.clone());
+        }
         let mut writer = Writer::new_with_indent(Vec::new(), b' ', 2);
 
         writer.write_event(Event::Decl(BytesDecl::new(
@@ -196,6 +204,7 @@ impl Relationships {
             target: target.to_string(),
             target_mode: None,
         });
+        self.raw = None;
         id
     }
 
@@ -209,6 +218,7 @@ impl Relationships {
             target: target.to_string(),
             target_mode: Some("External".to_string()),
         });
+        self.raw = None;
         id
     }
 
@@ -222,6 +232,7 @@ impl Relationships {
             target: target.to_string(),
             target_mode: None,
         });
+        self.raw = None;
         if let Some(num) = id.strip_prefix("rId").and_then(|s| s.parse::<u32>().ok())
             && num >= self.next_id
         {

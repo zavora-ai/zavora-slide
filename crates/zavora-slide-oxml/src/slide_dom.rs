@@ -107,6 +107,66 @@ impl SlideDom {
             .map(|tx| tx.children_named(b"p").count())
             .unwrap_or(0)
     }
+
+    /// Replace the body placeholder's paragraphs with `items` (text + indent
+    /// level), one paragraph each. The first existing paragraph's `a:pPr` and the
+    /// first run's `a:rPr` are reused as formatting templates so styling carries
+    /// over; the shape's properties and placeholder binding are untouched.
+    /// Returns an error if there is no body placeholder.
+    pub fn set_body_bullets(&mut self, items: &[(String, u8)]) -> Result<()> {
+        let sp = self
+            .find_placeholder_mut("body")
+            .ok_or_else(|| OxmlError::Parse("no body placeholder on slide".into()))?;
+        let tx = find_descendant_mut(sp, b"txBody")
+            .ok_or_else(|| OxmlError::Parse("body placeholder has no txBody".into()))?;
+
+        // Capture formatting templates from the first existing paragraph/run.
+        let ppr_tmpl: Option<Element> = tx
+            .children_named(b"p")
+            .next()
+            .and_then(|p| p.children_named(b"pPr").next().cloned());
+        let rpr_tmpl: Option<Element> = tx
+            .children_named(b"p")
+            .flat_map(|p| p.children_named(b"r"))
+            .next()
+            .and_then(|r| r.children_named(b"rPr").next().cloned());
+
+        // Drop existing paragraphs (keep bodyPr/lstStyle and any other children).
+        tx.children.retain(|n| match n {
+            Node::Element(e) => e.local_name() != b"p",
+            Node::Raw(_) => true,
+        });
+        for (text, level) in items {
+            tx.children
+                .push(Node::Element(make_paragraph(text, *level, &ppr_tmpl, &rpr_tmpl)));
+        }
+        Ok(())
+    }
+}
+
+/// Build an `<a:p>` with optional pPr template (level applied) and one run.
+fn make_paragraph(text: &str, level: u8, ppr_tmpl: &Option<Element>, rpr_tmpl: &Option<Element>) -> Element {
+    let mut p = new_element(b"a:p");
+    // Paragraph properties: clone the template (preserving bullet/indent styling)
+    // and set the outline level; omit pPr entirely for a clean level-0 paragraph
+    // when there is no template.
+    if let Some(tmpl) = ppr_tmpl {
+        let mut ppr = tmpl.clone();
+        if level > 0 {
+            ppr.set_attr(b"lvl", level.to_string().as_bytes());
+        } else {
+            ppr.attrs.retain(|(k, _)| k != b"lvl");
+            ppr.dirty = true;
+        }
+        p.children.push(Node::Element(ppr));
+    } else if level > 0 {
+        let mut ppr = new_element(b"a:pPr");
+        ppr.self_closing = true;
+        ppr.set_attr(b"lvl", level.to_string().as_bytes());
+        p.children.push(Node::Element(ppr));
+    }
+    p.children.push(Node::Element(make_run(text, rpr_tmpl.clone())));
+    p
 }
 
 /// Replace a shape's text with a single run, reusing the first existing run's
@@ -233,14 +293,30 @@ mod tests {
     }
 
     #[test]
-    fn set_title_preserves_everything_except_title_text() {
+    fn set_body_bullets_preserves_title_and_formatting() {
+        let mut dom = SlideDom::parse(SLIDE).unwrap();
+        dom.set_body_bullets(&[("New A".into(), 0), ("New B".into(), 1)]).unwrap();
+        let s = String::from_utf8(dom.to_bytes()).unwrap();
+        // New bullets present; old body text gone.
+        assert!(s.contains("<a:t>New A</a:t>"), "{s}");
+        assert!(s.contains("<a:t>New B</a:t>"));
+        assert!(!s.contains("Bullet one"));
+        assert!(!s.contains("Bullet two"));
+        // Level applied on the nested bullet.
+        assert!(s.contains(r#"lvl="1""#), "level set: {s}");
+        // Title shape untouched (text + formatting preserved).
+        assert!(s.contains("<a:t>Old Title</a:t>"), "title preserved: {s}");
+        assert!(s.contains(r#"<a:rPr lang="en-US" b="1"/>"#));
+    }
+
+    #[test]
+    fn set_title_preserves_body_shape_byte_for_byte() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
         dom.set_title("X").unwrap();
         let out = String::from_utf8(dom.to_bytes()).unwrap();
-        // Everything from the body shape onward is byte-identical to the source.
-        let body_start = out.find("<p:sp><p:nvSpPr><p:cNvPr id=\"3\"").unwrap();
         let src = String::from_utf8(SLIDE.to_vec()).unwrap();
-        let src_body = src.find("<p:sp><p:nvSpPr><p:cNvPr id=\"3\"").unwrap();
-        assert_eq!(&out[body_start..], &src[src_body..], "body shape verbatim");
+        // Everything from the body shape onward is byte-identical to the source.
+        let anchor = "<p:sp><p:nvSpPr><p:cNvPr id=\"3\"";
+        assert_eq!(&out[out.find(anchor).unwrap()..], &src[src.find(anchor).unwrap()..]);
     }
 }

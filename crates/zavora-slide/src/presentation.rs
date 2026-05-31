@@ -83,7 +83,8 @@ impl Presentation {
                 if let Some(part) = pkg.get_part(part_path) {
                     // Authoritative editable DOM (lossless, surgical edits).
                     data.dom = Some(zavora_slide_oxml::SlideDom::parse(part)?);
-                    // Text extraction still feeds render/markdown read paths.
+                    // Text extraction populates ONLY the build model (render/
+                    // markdown read paths); must not touch the DOM we just parsed.
                     let body = TextBody::from_xml(part)?;
                     if !body.paragraphs.is_empty() {
                         let bullets: Vec<crate::slide::Bullet> = body
@@ -97,7 +98,7 @@ impl Presentation {
                             .collect();
                         let (cx, cy) = (p.pres.slide_size.cx, p.pres.slide_size.cy);
                         let mut slide = Slide { data: &mut data, slide_cx: cx, slide_cy: cy };
-                        let _ = slide.add_bullets(&bullets);
+                        slide.sync_build_bullets_public(&bullets);
                     }
                 }
             }
@@ -304,11 +305,15 @@ impl Presentation {
     }
 
     /// When the deck was opened from a source package, return a faithful package:
-    /// the original parts byte-for-byte, with only the **edited** slides re-authored
-    /// in place (preserving master/layouts/theme/other slides/media). Returns
-    /// `None` (→ full rebuild) when there is no source, or when an edit can't be
-    /// overlaid safely (a structural change cleared the source, or an edited slide
-    /// gained notes — injecting a notesMaster into a foreign deck risks repair).
+    /// the original parts byte-for-byte, with only the **edited** slides updated.
+    ///
+    /// A slide edited purely through its DOM (text/title/bullets) is serialized
+    /// from that DOM — every untouched byte of the slide is preserved and its
+    /// relationships are left exactly as opened (fully surgical). A slide that
+    /// gained engine-authored media (image/picture background) is re-authored
+    /// with rebuilt media rels. Returns `None` (→ full rebuild) when there is no
+    /// source, a structural change cleared it, or an edited slide gained notes
+    /// (injecting a notesMaster into a foreign deck risks a repair prompt).
     fn overlay_package(&self) -> Result<Option<OpcPackage>> {
         let Some(src) = &self.source else { return Ok(None) };
         if self.slides.iter().any(|s| s.dirty && s.notes.is_some()) {
@@ -317,7 +322,16 @@ impl Presentation {
         let mut pkg = src.clone();
         for slide in self.slides.iter().filter(|s| s.dirty) {
             let Some(part) = &slide.source_part else { continue };
-            // Preserve the slide's original layout link; rebuild media rels.
+            let has_new_media = slide.background.is_some() || !slide.images.is_empty();
+
+            // Surgical DOM path: serialize the mutated tree, leave rels untouched.
+            if let (Some(dom), false) = (&slide.dom, has_new_media) {
+                pkg.set_part(part, dom.to_bytes());
+                continue;
+            }
+
+            // Media path: re-author the slide and rebuild its media rels, keeping
+            // the original layout link.
             let layout_target = pkg
                 .get_part_rels(part)
                 .and_then(|r| r.get_by_type(rel_types::SLIDE_LAYOUT))
@@ -326,7 +340,6 @@ impl Presentation {
             if let Some(t) = &layout_target {
                 rels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, t);
             }
-            // Media targets sit next to the slide part (../media/...).
             let stem = part.rsplit('/').next().unwrap_or("slide").trim_end_matches(".xml");
             if let Some(crate::slide::Fill::Picture { data, ext }) = &slide.background {
                 rels.add_with_id(crate::slide::BG_EMBED_RID, rel_types::IMAGE, &format!("../media/bg_{stem}.{ext}"));

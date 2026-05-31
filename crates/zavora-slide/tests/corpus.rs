@@ -11,6 +11,26 @@ use zavora_slide_oxml::Document;
 
 const SAMPLE: &str = "tests/corpus/powerpoint_sample.pptx";
 
+/// All byte-comparable entries of a package: parts, every part's `.rels`, the
+/// package `.rels`, and `[Content_Types].xml`. Used to assert true byte-fidelity
+/// (the earlier `get_part`-only checks silently skipped rels/content-types).
+fn package_entries(pkg: &OpcPackage) -> std::collections::BTreeMap<String, Vec<u8>> {
+    let mut m = std::collections::BTreeMap::new();
+    for name in pkg.part_names() {
+        m.insert(name.to_string(), pkg.get_part(name).unwrap().to_vec());
+    }
+    for (part, rels) in &pkg.part_rels {
+        m.insert(format!("rels::{part}"), rels.to_xml().unwrap());
+    }
+    m.insert("rels::PACKAGE".into(), pkg.package_rels.to_xml().unwrap());
+    m.insert("[Content_Types].xml".into(), pkg.content_types.to_xml().unwrap());
+    m
+}
+
+fn reopen(buf: Vec<u8>) -> OpcPackage {
+    OpcPackage::from_reader(std::io::Cursor::new(buf)).unwrap()
+}
+
 #[test]
 fn dom_round_trips_every_xml_part_byte_for_byte() {
     // The lossless XML DOM is the foundation for surgical editing: every real
@@ -78,14 +98,12 @@ fn opc_layer_round_trips_all_parts() {
 
 #[test]
 fn high_level_open_save_is_faithful() {
-    // An opened-but-unedited deck saves byte-identical parts (source preserved).
+    // An opened-but-unedited deck saves byte-identical — EVERY entry, including
+    // all .rels and [Content_Types].xml (not just the parts).
     let p = Presentation::open(SAMPLE).unwrap();
-    let saved = p.save_to_buffer().unwrap();
-    let orig = OpcPackage::open(SAMPLE).unwrap();
-    let resaved = OpcPackage::from_reader(std::io::Cursor::new(saved)).unwrap();
-    for name in orig.part_names() {
-        assert_eq!(orig.get_part(name), resaved.get_part(name), "part {name} preserved");
-    }
+    let orig = package_entries(&OpcPackage::open(SAMPLE).unwrap());
+    let resaved = package_entries(&reopen(p.save_to_buffer().unwrap()));
+    assert_eq!(orig, resaved, "unedited open->save is byte-identical for all entries");
 }
 
 #[test]
@@ -93,47 +111,34 @@ fn reading_does_not_break_round_trip() {
     let p = Presentation::open(SAMPLE).unwrap();
     let _ = p.slide(0).unwrap().text();
     let _ = p.to_markdown();
-    let saved = p.save_to_buffer().unwrap();
-    let orig = OpcPackage::open(SAMPLE).unwrap();
-    let resaved = OpcPackage::from_reader(std::io::Cursor::new(saved)).unwrap();
-    for name in orig.part_names() {
-        assert_eq!(orig.get_part(name), resaved.get_part(name), "part {name} preserved after reads");
-    }
+    let orig = package_entries(&OpcPackage::open(SAMPLE).unwrap());
+    let resaved = package_entries(&reopen(p.save_to_buffer().unwrap()));
+    assert_eq!(orig, resaved, "reads must not perturb any entry");
 }
 
 #[test]
-fn editing_overlays_only_edited_slide() {
-    // Editing slide 0 re-authors just that slide; master/layouts/theme and the
-    // other slides stay byte-identical (overlay save, not a full rebuild).
+fn editing_is_surgical_dom_based() {
+    // Editing slide 0's title mutates only that slide's DOM. EVERY other entry —
+    // master, 11 layouts, theme, other slides, all .rels, content-types — is
+    // byte-identical. Within the edited slide, only the title run changes.
     let mut p = Presentation::open(SAMPLE).unwrap();
     p.slide_mut(0).unwrap().set_title("Edited Title").unwrap();
-    let saved = p.save_to_buffer().unwrap();
-    let orig = OpcPackage::open(SAMPLE).unwrap();
-    let out = OpcPackage::from_reader(std::io::Cursor::new(saved)).unwrap();
+    let orig = package_entries(&OpcPackage::open(SAMPLE).unwrap());
+    let out = package_entries(&reopen(p.save_to_buffer().unwrap()));
 
-    // All 11 original layouts survive (no rebuild to a single layout).
-    let layouts = out.part_names().filter(|n| n.contains("/slideLayouts/slideLayout")).count();
-    assert_eq!(layouts, 11, "original layouts preserved");
+    // Exactly one entry differs: the edited slide body.
+    let diffs: Vec<&String> = orig
+        .keys()
+        .filter(|k| orig.get(*k) != out.get(*k))
+        .collect();
+    assert_eq!(diffs, vec!["/ppt/slides/slide1.xml"], "only the edited slide changes");
+    assert_eq!(orig.keys().collect::<Vec<_>>(), out.keys().collect::<Vec<_>>(), "no entries added/removed");
 
-    // Everything except the edited slide is byte-identical.
-    for name in orig.part_names() {
-        if name == "/ppt/slides/slide1.xml" {
-            continue;
-        }
-        assert_eq!(orig.get_part(name), out.get_part(name), "part {name} preserved");
-    }
-
-    // The edited slide carries the new title and links to its original layout.
-    let s1 = String::from_utf8(out.get_part("/ppt/slides/slide1.xml").unwrap().to_vec()).unwrap();
-    assert!(s1.contains("Edited Title"), "edited slide has new title");
-    assert!(
-        out.get_part_rels("/ppt/slides/slide1.xml")
-            .unwrap()
-            .items
-            .iter()
-            .any(|r| r.target.contains("slideLayout")),
-        "edited slide keeps a layout relationship"
-    );
+    // New title present; the subtitle shape on slide 1 is preserved verbatim.
+    let s1 = String::from_utf8(out["/ppt/slides/slide1.xml"].clone()).unwrap();
+    assert!(s1.contains("Edited Title"), "new title in edited slide");
+    assert!(!s1.contains("Corpus Sample"), "old title gone");
+    assert!(s1.contains("Authored by python-pptx"), "subtitle preserved verbatim");
 }
 
 #[test]

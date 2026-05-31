@@ -25,6 +25,10 @@ pub enum ContentType {
 pub struct ContentTypes {
     pub defaults: HashMap<String, String>,
     pub overrides: HashMap<String, String>,
+    /// Original bytes (when parsed from a file), emitted verbatim by `to_xml`
+    /// until a mutation clears them — so an untouched package round-trips
+    /// byte-for-byte.
+    raw: Option<Vec<u8>>,
 }
 
 impl ContentTypes {
@@ -96,11 +100,15 @@ impl ContentTypes {
         Ok(ContentTypes {
             defaults,
             overrides,
+            raw: Some(xml.to_vec()),
         })
     }
 
-    /// Serialize to XML bytes.
+    /// Serialize to XML bytes (verbatim when parsed and unmodified).
     pub fn to_xml(&self) -> Result<Vec<u8>> {
+        if let Some(raw) = &self.raw {
+            return Ok(raw.clone());
+        }
         let mut writer = Writer::new_with_indent(Vec::new(), b' ', 2);
 
         writer.write_event(Event::Decl(BytesDecl::new(
@@ -159,15 +167,19 @@ impl ContentTypes {
 
     /// Add a default content type for an extension (e.g., "png" -> "image/png").
     pub fn add_default(&mut self, extension: &str, content_type: &str) {
-        self.defaults
-            .entry(extension.to_string())
-            .or_insert_with(|| content_type.to_string());
+        if !self.defaults.contains_key(extension) {
+            self.defaults.insert(extension.to_string(), content_type.to_string());
+            self.raw = None; // structure changed → re-serialize
+        }
     }
 
     /// Add an override content type for a specific part name.
     pub fn add_override(&mut self, part_name: &str, content_type: &str) {
-        self.overrides
-            .insert(part_name.to_string(), content_type.to_string());
+        let changed = self.overrides.insert(part_name.to_string(), content_type.to_string())
+            != Some(content_type.to_string());
+        if changed {
+            self.raw = None;
+        }
     }
 
     /// Create a new ContentTypes with the standard PPTX defaults
@@ -190,6 +202,7 @@ impl ContentTypes {
         ContentTypes {
             defaults,
             overrides,
+            raw: None,
         }
     }
 }
