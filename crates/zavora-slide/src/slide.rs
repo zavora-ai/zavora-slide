@@ -201,6 +201,10 @@ pub struct SlideData {
     /// path, whose relationships are cloned so the copy references the same
     /// layout/media. The copy's content comes from its (cloned) `dom`.
     pub(crate) clone_rels_from: Option<String>,
+    /// For a brand-new blank slide added to a source-backed deck: the
+    /// `sldLayout@type` to bind to one of the deck's existing layouts. The slide
+    /// part is authored minimally (empty spTree) during save.
+    pub(crate) new_blank_layout_type: Option<String>,
     /// Editable DOM of the slide when opened from an existing deck. Edits mutate
     /// this tree in place; save serializes it byte-faithfully (untouched content
     /// preserved). `None` for slides authored from scratch.
@@ -221,6 +225,7 @@ impl SlideData {
             source_part: None,
             sld_id: None,
             clone_rels_from: None,
+            new_blank_layout_type: None,
             dom: None,
             next_id: 2,
         }

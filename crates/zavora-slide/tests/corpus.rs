@@ -258,12 +258,36 @@ fn delete_slide_is_faithful() {
 }
 
 #[test]
-fn structural_edit_falls_back_to_rebuild() {
-    // Adding a slide is a structural change → full rebuild from the model.
+fn add_slide_is_faithful() {
+    // Adding a slide to an opened deck binds it to an existing layout and keeps
+    // master/all layouts/theme/original slides byte-identical (no rebuild).
     let mut p = Presentation::open(SAMPLE).unwrap();
     p.add_slide(zavora_slide::Layout::Blank);
-    let saved = p.save_to_buffer().unwrap();
-    let out = OpcPackage::from_reader(std::io::Cursor::new(saved)).unwrap();
+    let orig = OpcPackage::open(SAMPLE).unwrap();
+    let out = reopen(p.save_to_buffer().unwrap());
+
+    // All 11 original layouts survive.
     let layouts = out.part_names().filter(|n| n.contains("/slideLayouts/slideLayout")).count();
-    assert_eq!(layouts, 1, "structural edit rebuilds with the engine's single layout");
+    assert_eq!(layouts, 11, "original layouts preserved");
+    // Master/layouts/theme/original slides byte-identical.
+    for name in orig.part_names() {
+        if name == "/ppt/presentation.xml" {
+            continue;
+        }
+        assert_eq!(orig.get_part(name), out.get_part(name), "part {name} preserved");
+    }
+    // A new blank slide part exists and binds to an existing layout.
+    let extra: Vec<&str> = out
+        .part_names()
+        .filter(|n| n.starts_with("/ppt/slides/slide") && n.ends_with(".xml") && orig.get_part(n).is_none())
+        .collect();
+    assert_eq!(extra.len(), 1, "one new slide part");
+    let rels = out.get_part_rels(extra[0]).unwrap();
+    assert!(
+        rels.items.iter().any(|r| r.target.contains("slideLayouts/slideLayout")),
+        "new slide bound to an existing layout"
+    );
+    // presentation now lists 4 slides.
+    let pres = String::from_utf8(out.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
+    assert_eq!(pres.matches("<p:sldId ").count(), 4);
 }

@@ -158,10 +158,25 @@ impl Presentation {
     /// Append a blank slide bound to the (single, Phase 0) layout. Returns the
     /// new slide's 0-based index. `_layout` is accepted for API stability;
     /// per-layout placeholder geometry lands in later phases.
-    pub fn add_slide(&mut self, _layout: Layout) -> usize {
-        self.slides.push(SlideData::new());
-        self.invalidate_source();
-        self.resync_slide_ids();
+    pub fn add_slide(&mut self, layout: Layout) -> usize {
+        if self.source.is_some() && self.slides.iter().all(|s| s.sld_id.is_some()) {
+            // Faithful add: a new blank slide bound to one of the deck's existing
+            // layouts (resolved by type during save), inheriting its master/theme.
+            let new_part = self.fresh_slide_part_path();
+            let new_id = self.fresh_sld_id();
+            let mut data = SlideData::new();
+            data.source_part = Some(new_part);
+            data.sld_id = Some((new_id, String::new()));
+            data.new_blank_layout_type = Some(layout.layout_type().to_string());
+            data.dom = zavora_slide_oxml::SlideDom::parse(&blank_slide_xml()).ok();
+            self.slides.push(data);
+            self.reordered = true;
+            self.resync_build_ids_only();
+        } else {
+            self.slides.push(SlideData::new());
+            self.invalidate_source();
+            self.resync_slide_ids();
+        }
         self.slides.len() - 1
     }
 
@@ -450,7 +465,7 @@ impl Presentation {
             .unwrap_or(1)
             + 1;
 
-        // Effective presentation rel id per slide (clones get a fresh one).
+        // Effective presentation rel id per slide (new/cloned slides get a fresh one).
         let mut eff_rids: Vec<String> = Vec::with_capacity(self.slides.len());
         for s in &self.slides {
             if let Some(orig_part) = &s.clone_rels_from {
@@ -467,6 +482,25 @@ impl Presentation {
                     pkg.part_rels.insert(new_part.clone(), orig_rels);
                 }
                 // Add presentation → new slide rel (target relative to ppt/).
+                let target = new_part.strip_prefix("/ppt/").unwrap_or(new_part);
+                pkg.get_or_create_part_rels("/ppt/presentation.xml")
+                    .add_with_id(&rid, rel_types::SLIDE, target);
+                eff_rids.push(rid);
+            } else if let Some(lt) = &s.new_blank_layout_type {
+                let new_part = s.source_part.as_ref().expect("new slide has a part path");
+                let rid = format!("rId{next_rid}");
+                next_rid += 1;
+                // Bind to an existing layout of the requested type (fallback: any).
+                let layout = find_layout_by_type(pkg, lt)
+                    .or_else(|| find_layout_by_type(pkg, ""))
+                    .ok_or_else(|| SlideError::Unsupported("deck has no slide layout to bind".into()))?;
+                let bytes = s.dom.as_ref().map(|d| d.to_bytes()).unwrap_or_else(blank_slide_xml);
+                pkg.set_part(new_part, bytes);
+                pkg.content_types.add_override(new_part, template::CT_SLIDE);
+                let layout_target = format!("../slideLayouts/{}", layout.rsplit('/').next().unwrap());
+                let mut srels = zavora_slide_opc::Relationships::new();
+                srels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, &layout_target);
+                pkg.part_rels.insert(new_part.clone(), srels);
                 let target = new_part.strip_prefix("/ppt/").unwrap_or(new_part);
                 pkg.get_or_create_part_rels("/ppt/presentation.xml")
                     .add_with_id(&rid, rel_types::SLIDE, target);
@@ -670,6 +704,45 @@ fn find_child_named_mut<'a>(
         zavora_slide_oxml::Node::Element(e) if e.local_name() == local => Some(e),
         _ => None,
     })
+}
+
+/// Find a slideLayout part whose `sldLayout@type` equals `ty` (or any layout
+/// when `ty` is empty). Returns the part path.
+fn find_layout_by_type(pkg: &OpcPackage, ty: &str) -> Option<String> {
+    let mut parts: Vec<&str> = pkg
+        .part_names()
+        .filter(|n| n.starts_with("/ppt/slideLayouts/slideLayout") && n.ends_with(".xml"))
+        .collect();
+    parts.sort();
+    for part in parts {
+        let bytes = pkg.get_part(part)?;
+        let head = &bytes[..bytes.len().min(400)];
+        let s = String::from_utf8_lossy(head);
+        if ty.is_empty() {
+            return Some(part.to_string());
+        }
+        if let Some(i) = s.find("<p:sldLayout")
+            && s[i..].split('>').next().is_some_and(|tag| tag.contains(&format!("type=\"{ty}\"")))
+        {
+            return Some(part.to_string());
+        }
+    }
+    None
+}
+
+/// A minimal valid blank slide part (empty shape tree).
+fn blank_slide_xml() -> Vec<u8> {
+    concat!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n",
+        "<p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" ",
+        "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" ",
+        "xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">",
+        "<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/>",
+        "</p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld>",
+        "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
+    )
+    .as_bytes()
+    .to_vec()
 }
 
 #[cfg(test)]

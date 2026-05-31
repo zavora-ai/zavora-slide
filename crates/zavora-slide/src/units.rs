@@ -42,6 +42,18 @@ impl Layout {
             _ => None,
         }
     }
+
+    /// The PresentationML `sldLayout@type` this layout corresponds to, used to
+    /// bind a new slide to an existing layout in an opened deck.
+    pub fn layout_type(self) -> &'static str {
+        match self {
+            Layout::Title => "title",
+            Layout::TitleContent => "obj",
+            Layout::SectionHeader => "secHead",
+            Layout::TwoContent => "twoObj",
+            Layout::Blank => "blank",
+        }
+    }
 }
 
 /// Deck slide-size presets.
