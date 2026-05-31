@@ -493,6 +493,51 @@ pub struct ShapeInfo {
     pub text: String,
 }
 
+/// A read-only borrow of a slide (does not invalidate a preserved source).
+pub struct SlideRef<'a> {
+    pub(crate) data: &'a SlideData,
+    pub(crate) slide_cx: i64,
+    pub(crate) slide_cy: i64,
+}
+
+impl SlideRef<'_> {
+    /// Speaker notes text, if any.
+    pub fn notes(&self) -> Option<&str> {
+        self.data.notes.as_deref()
+    }
+
+    /// Shape inventory (kind + text).
+    pub fn shapes(&self) -> Vec<ShapeInfo> {
+        self.data
+            .shapes
+            .iter()
+            .map(|sp| ShapeInfo {
+                kind: match &sp.placeholder {
+                    Some(ph) => ph.ph_type.clone(),
+                    None if sp.text_box => "textbox".to_string(),
+                    None => "shape".to_string(),
+                },
+                text: sp.body.paragraphs.iter().map(|p| p.text()).collect::<Vec<_>>().join("\n"),
+            })
+            .collect()
+    }
+
+    /// Extracted plain text of all shapes (one paragraph per line).
+    pub fn text(&self) -> String {
+        self.data
+            .shapes
+            .iter()
+            .flat_map(|sp| sp.body.paragraphs.iter().map(|p| p.text()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Build a render-ready scene of this slide.
+    pub fn scene(&self) -> zavora_slide_layout::Scene {
+        self.data.to_scene(self.slide_cx, self.slide_cy)
+    }
+}
+
 /// Build a canonical notesSlide part for the given notes text. Mirrors the
 /// structure PowerPoint emits: a slide-image placeholder and a body
 /// placeholder carrying the notes.

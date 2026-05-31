@@ -20,6 +20,10 @@ pub struct Presentation {
     layout: RawPart,
     theme: RawPart,
     slides: Vec<SlideData>,
+    /// Original package when opened from an existing `.pptx`. Re-emitted verbatim
+    /// on save for a faithful round-trip; cleared by any edit (after which save
+    /// rebuilds from the text-only model — see [`Presentation::open`]).
+    source: Option<OpcPackage>,
 }
 
 impl Presentation {
@@ -33,20 +37,23 @@ impl Presentation {
             layout: RawPart::from_xml(template::SLIDE_LAYOUT_XML.as_bytes()),
             theme: RawPart::from_xml(template::THEME_XML.as_bytes()),
             slides: Vec::new(),
+            source: None,
         }
     }
 
-    /// Open an existing `.pptx`, extracting **text only** into the model.
+    /// Open an existing `.pptx`. The original package is preserved and re-emitted
+    /// verbatim on [`save`](Self::save) for a **faithful round-trip**, as long as
+    /// the deck is not edited.
     ///
-    /// This powers read/inspect/convert in the CLI. It is intentionally lossy:
-    /// shapes, images, tables, and formatting are not reconstructed, so a
-    /// re-saved deck would contain only the extracted text. A faithful
-    /// round-trip is future work (Requirement 3).
+    /// The in-memory model is populated by **text-only** extraction (shapes,
+    /// images, tables, and formatting are not reconstructed). Any edit clears the
+    /// preserved package, after which save rebuilds from the text-only model —
+    /// so editing an opened deck is lossy. Faithful *editing* is future work.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         Self::open_from_package(OpcPackage::open(path)?)
     }
 
-    /// Open from in-memory `.pptx` bytes (text-only; see [`Presentation::open`]).
+    /// Open from in-memory `.pptx` bytes (see [`Presentation::open`]).
     pub fn open_from_bytes(bytes: &[u8]) -> Result<Self> {
         Self::open_from_package(OpcPackage::from_reader(std::io::Cursor::new(bytes.to_vec()))?)
     }
@@ -88,7 +95,16 @@ impl Presentation {
             p.slides.push(data);
         }
         p.resync_slide_ids();
+        // Preserve the original package for a faithful round-trip on save.
+        p.source = Some(pkg);
         Ok(p)
+    }
+
+    /// Discard the preserved source package (called by any structural/content
+    /// edit, so a subsequent save reflects the edited model rather than the
+    /// original bytes).
+    fn invalidate_source(&mut self) {
+        self.source = None;
     }
 
     /// Number of slides in the deck.
@@ -98,6 +114,7 @@ impl Presentation {
 
     /// Set the deck slide size.
     pub fn set_slide_size(&mut self, size: SlideSize) {
+        self.invalidate_source();
         let (cx, cy, ty) = size.dims();
         self.pres.slide_size.cx = cx;
         self.pres.slide_size.cy = cy;
@@ -106,6 +123,7 @@ impl Presentation {
 
     /// Apply a theme (color scheme + fonts) to the deck.
     pub fn apply_theme(&mut self, theme: &crate::theme::ThemeSpec) {
+        self.invalidate_source();
         self.theme = RawPart { xml: theme.build_theme_xml() };
     }
 
@@ -113,6 +131,7 @@ impl Presentation {
     /// numeric id 256+N and presentation rel id rId(N+2) (rId1 is the master).
     /// Called after every structural mutation so ids/rels stay consistent.
     fn resync_slide_ids(&mut self) {
+        self.invalidate_source();
         self.pres.slide_ids = (0..self.slides.len())
             .map(|i| SlideIdEntry { id: 256 + i as u32, r_id: format!("rId{}", i + 2) })
             .collect();
@@ -161,14 +180,26 @@ impl Presentation {
         Ok(())
     }
 
-    /// Borrow a slide for editing (title, bullets, text boxes).
+    /// Borrow a slide for editing (title, bullets, text boxes). Editing a slide
+    /// invalidates the preserved source package (see [`Presentation::open`]).
     pub fn slide_mut(&mut self, idx: usize) -> Result<Slide<'_>> {
+        if idx >= self.slides.len() {
+            return Err(SlideError::NotFound(format!("slide index {idx}")));
+        }
+        self.invalidate_source();
+        let (cx, cy) = (self.pres.slide_size.cx, self.pres.slide_size.cy);
+        let data = &mut self.slides[idx];
+        Ok(Slide { data, slide_cx: cx, slide_cy: cy })
+    }
+
+    /// Read-only borrow of a slide (does not invalidate the source package).
+    pub fn slide(&self, idx: usize) -> Result<crate::slide::SlideRef<'_>> {
         let (cx, cy) = (self.pres.slide_size.cx, self.pres.slide_size.cy);
         let data = self
             .slides
-            .get_mut(idx)
+            .get(idx)
             .ok_or_else(|| SlideError::NotFound(format!("slide index {idx}")))?;
-        Ok(Slide { data, slide_cx: cx, slide_cy: cy })
+        Ok(crate::slide::SlideRef { data, slide_cx: cx, slide_cy: cy })
     }
 
     /// Render a slide to PNG or SVG bytes at a default width (1280px).
@@ -228,8 +259,11 @@ impl Presentation {
 
     /// Save to a file path.
     pub fn save<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let pkg = self.build_package()?;
-        pkg.save(path)?;
+        if let Some(src) = &self.source {
+            src.save(path)?;
+            return Ok(());
+        }
+        self.build_package()?.save(path)?;
         Ok(())
     }
 
@@ -241,6 +275,10 @@ impl Presentation {
     }
 
     fn write_to<W: Write + Seek>(&self, w: W) -> Result<()> {
+        if let Some(src) = &self.source {
+            src.write_to(w)?;
+            return Ok(());
+        }
         self.build_package()?.write_to(w)?;
         Ok(())
     }
