@@ -989,6 +989,7 @@ name = "zavora-slide"
 version = "0.1.0"
 dependencies = [
  "thiserror",
+ "zavora-slide-layout",
  "zavora-slide-opc",
  "zavora-slide-oxml",
 ]
@@ -1004,10 +1005,6 @@ dependencies = [
 [[package]]
 name = "zavora-slide-layout"
 version = "0.1.0"
-dependencies = [
- "thiserror",
- "zavora-slide-oxml",
-]
 
 [[package]]
 name = "zavora-slide-opc"

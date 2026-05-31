@@ -204,6 +204,94 @@ impl SlideData {
         )
         .into_bytes()
     }
+
+    /// Build a render-ready [`Scene`] from this slide's content.
+    pub fn to_scene(&self, width_emu: i64, height_emu: i64) -> zavora_slide_layout::Scene {
+        use zavora_slide_layout::{Color, Item, Rect, Scene, TextLine};
+
+        let hex = |h: &str| Color::from_hex(h).unwrap_or(Color::BLACK);
+        let mut scene = Scene::new(width_emu, height_emu);
+        if let Some(Fill::Solid(c)) = &self.background {
+            scene.background = Color::from_hex(c);
+        }
+
+        for sp in &self.shapes {
+            let Some((x, y, w, h)) = sp.xfrm else { continue };
+            let rect = Rect { x, y, w, h };
+            // Auto-shape body: filled/outlined box.
+            if sp.fill.is_some() || sp.line.is_some() {
+                scene.items.push(Item::Rect {
+                    rect,
+                    fill: sp.fill.as_deref().and_then(Color::from_hex),
+                    outline: sp.line.as_ref().and_then(|(c, w)| {
+                        Color::from_hex(c).map(|col| (col, *w as f64 / zavora_slide_layout::EMU_PER_POINT))
+                    }),
+                });
+            }
+            // Text content.
+            let is_title = sp.placeholder.as_ref().is_some_and(|p| p.ph_type == "title");
+            let lines: Vec<TextLine> = sp
+                .body
+                .paragraphs
+                .iter()
+                .filter(|p| !p.text().is_empty())
+                .map(|p| {
+                    let rp = p.runs.first().map(|r| &r.props);
+                    TextLine {
+                        text: p.text(),
+                        size_pt: rp.and_then(|r| r.size_pt).unwrap_or(if is_title { 32.0 } else { 18.0 }),
+                        color: rp.and_then(|r| r.color.as_deref()).map(hex).unwrap_or(Color::BLACK),
+                        bold: rp.and_then(|r| r.bold).unwrap_or(false),
+                        italic: rp.and_then(|r| r.italic).unwrap_or(false),
+                        level: p.level.unwrap_or(0),
+                    }
+                })
+                .collect();
+            if !lines.is_empty() {
+                scene.items.push(Item::Text { rect, lines });
+            }
+        }
+
+        for img in &self.images {
+            scene.items.push(Item::Image {
+                rect: Rect { x: img.x, y: img.y, w: img.cx, h: img.cy },
+                data: img.data.clone(),
+            });
+        }
+
+        // Tables: outline box + per-cell text (even grid).
+        for t in &self.tables {
+            let cw = if t.cols > 0 { t.cx / t.cols as i64 } else { t.cx };
+            let rh = if t.rows > 0 { t.cy / t.rows as i64 } else { t.cy };
+            for r in 0..t.rows {
+                for c in 0..t.cols {
+                    let cell = Rect { x: t.x + c as i64 * cw, y: t.y + r as i64 * rh, w: cw, h: rh };
+                    scene.items.push(Item::Rect {
+                        rect: cell,
+                        fill: None,
+                        outline: Some((Color { r: 200, g: 200, b: 200 }, 0.75)),
+                    });
+                    if let Some(text) = t.cells.get(r * t.cols + c)
+                        && !text.is_empty()
+                    {
+                        scene.items.push(Item::Text {
+                            rect: cell,
+                            lines: vec![TextLine {
+                                text: text.clone(),
+                                size_pt: 14.0,
+                                color: Color::BLACK,
+                                bold: r == 0,
+                                italic: false,
+                                level: 0,
+                            }],
+                        });
+                    }
+                }
+            }
+        }
+
+        scene
+    }
 }
 
 /// A mutable handle to one slide, aware of the deck's slide size for placeholder
@@ -390,6 +478,11 @@ impl Slide<'_> {
         }
         lines.join("\n")
     }
+
+    /// Build a render-ready [`Scene`](zavora_slide_layout::Scene) of this slide.
+    pub fn scene(&self) -> zavora_slide_layout::Scene {
+        self.data.to_scene(self.slide_cx, self.slide_cy)
+    }
 }
 
 /// A lightweight description of one shape, for read/inspection.
@@ -566,6 +659,25 @@ mod tests {
         assert!(xml.contains("prst=\"ellipse\""));
         assert!(xml.contains("<a:srgbClr val=\"00AA00\"/>"));
         assert!(xml.contains("<a:ln w=\"25400\">"));
+    }
+
+    #[test]
+    fn scene_includes_text_and_table() {
+        use zavora_slide_layout::Item;
+        let mut d = SlideData::new();
+        {
+            let mut s = slide(&mut d);
+            s.set_title("Hi").unwrap();
+            s.set_background(Fill::Solid("#FFFFFF".into()));
+            let t = s.add_table(1, 2, Emu::inches(1.0), Emu::inches(3.0), Emu::inches(4.0), Emu::inches(1.0));
+            s.set_table_cell(t, 0, 0, "A").unwrap();
+        }
+        let scene = d.to_scene(12192000, 6858000);
+        assert!(scene.background.is_some());
+        let texts = scene.items.iter().filter(|i| matches!(i, Item::Text { .. })).count();
+        let rects = scene.items.iter().filter(|i| matches!(i, Item::Rect { .. })).count();
+        assert!(texts >= 2); // title + 1 non-empty cell
+        assert_eq!(rects, 2); // 2 cell outlines
     }
 
     #[test]

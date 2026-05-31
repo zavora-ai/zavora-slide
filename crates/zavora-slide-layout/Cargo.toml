@@ -12,5 +12,4 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-zavora-slide-oxml = { workspace = true }
-thiserror = { workspace = true }
+
