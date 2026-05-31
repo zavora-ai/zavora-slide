@@ -30,7 +30,13 @@ impl Bullet {
 pub enum Fill {
     /// Solid color (hex, with or without `#`).
     Solid(String),
+    /// A stretched picture fill (background only). `ext` is "png"/"jpg"/"jpeg".
+    Picture { data: Vec<u8>, ext: String },
 }
+
+/// Fixed slide-rel id for a background picture (one per slide; clear of
+/// layout rId1, notes rId2, and image embeds rId10+).
+pub(crate) const BG_EMBED_RID: &str = "rId9";
 
 impl Fill {
     fn bg_xml(&self) -> String {
@@ -42,6 +48,11 @@ impl Fill {
                      <a:effectLst/></p:bgPr></p:bg>"
                 )
             }
+            Fill::Picture { .. } => format!(
+                "<p:bg><p:bgPr><a:blipFill><a:blip r:embed=\"{BG_EMBED_RID}\"/>\
+                 <a:stretch><a:fillRect/></a:stretch></a:blipFill>\
+                 <a:effectLst/></p:bgPr></p:bg>"
+            ),
         }
     }
 }
@@ -53,6 +64,25 @@ pub enum ImageSrc {
     Path(std::path::PathBuf),
     /// Raw bytes with an explicit extension ("png", "jpg", "jpeg").
     Bytes { data: Vec<u8>, ext: String },
+}
+
+/// Resolve an [`ImageSrc`] to (bytes, lowercased ext), validating the type.
+fn read_image(src: ImageSrc) -> Result<(Vec<u8>, String)> {
+    let (data, ext) = match src {
+        ImageSrc::Path(p) => {
+            let ext = p
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_ascii_lowercase())
+                .ok_or_else(|| SlideError::InvalidInput("image path has no extension".into()))?;
+            (std::fs::read(&p)?, ext)
+        }
+        ImageSrc::Bytes { data, ext } => (data, ext.to_ascii_lowercase()),
+    };
+    if !matches!(ext.as_str(), "png" | "jpg" | "jpeg") {
+        return Err(SlideError::InvalidInput(format!("unsupported image type '{ext}'")));
+    }
+    Ok((data, ext))
 }
 
 /// An embedded image: its media bytes/extension plus placement.
@@ -211,8 +241,13 @@ impl SlideData {
 
         let hex = |h: &str| Color::from_hex(h).unwrap_or(Color::BLACK);
         let mut scene = Scene::new(width_emu, height_emu);
-        if let Some(Fill::Solid(c)) = &self.background {
-            scene.background = Color::from_hex(c);
+        match &self.background {
+            Some(Fill::Solid(c)) => scene.background = Color::from_hex(c),
+            Some(Fill::Picture { data, .. }) => scene.items.push(Item::Image {
+                rect: Rect { x: 0, y: 0, w: width_emu, h: height_emu },
+                data: data.clone(),
+            }),
+            None => {}
         }
 
         for sp in &self.shapes {
@@ -411,21 +446,7 @@ impl Slide<'_> {
 
     /// Embed an image at the given EMU position/size. PNG and JPEG supported.
     pub fn add_image(&mut self, src: ImageSrc, x: Emu, y: Emu, w: Emu, h: Emu) -> Result<()> {
-        let (data, ext) = match src {
-            ImageSrc::Path(p) => {
-                let ext = p
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .map(|e| e.to_ascii_lowercase())
-                    .ok_or_else(|| SlideError::InvalidInput("image path has no extension".into()))?;
-                let data = std::fs::read(&p)?;
-                (data, ext)
-            }
-            ImageSrc::Bytes { data, ext } => (data, ext.to_ascii_lowercase()),
-        };
-        if !matches!(ext.as_str(), "png" | "jpg" | "jpeg") {
-            return Err(SlideError::InvalidInput(format!("unsupported image type '{ext}'")));
-        }
+        let (data, ext) = read_image(src)?;
         let id = self.data.alloc_id();
         // Embed rel ids start at rId10 to stay clear of layout(rId1)/notes(rId2).
         let embed_rid = format!("rId{}", 10 + self.data.images.len());
@@ -445,6 +466,13 @@ impl Slide<'_> {
     /// Set the slide background fill.
     pub fn set_background(&mut self, fill: Fill) {
         self.data.background = Some(fill);
+    }
+
+    /// Set the slide background to a stretched picture (PNG/JPEG).
+    pub fn set_background_image(&mut self, src: ImageSrc) -> Result<()> {
+        let (data, ext) = read_image(src)?;
+        self.data.background = Some(Fill::Picture { data, ext });
+        Ok(())
     }
 
     /// Speaker notes text, if any.
@@ -656,6 +684,17 @@ mod tests {
         let tree = xml.find("<p:spTree>").unwrap();
         assert!(bg < tree);
         assert!(xml.contains("<a:srgbClr val=\"102030\"/>"));
+    }
+
+    #[test]
+    fn picture_background_emits_blipfill() {
+        let mut d = SlideData::new();
+        slide(&mut d)
+            .set_background_image(ImageSrc::Bytes { data: vec![0xFF, 0xD8, 1, 2], ext: "PNG".into() })
+            .unwrap();
+        let xml = String::from_utf8(d.to_xml()).unwrap();
+        assert!(xml.contains(&format!("<a:blip r:embed=\"{}\"/>", crate::slide::BG_EMBED_RID)));
+        assert!(xml.contains("<a:stretch>"));
     }
 
     #[test]

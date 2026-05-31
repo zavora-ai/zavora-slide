@@ -365,6 +365,19 @@ impl Presentation {
                         &format!("../media/image{}_{}.{}", idx + 1, img.id, img.ext),
                     );
                 }
+                if let Some(crate::slide::Fill::Picture { ext, .. }) = &slide.background {
+                    rels.add_with_id(
+                        crate::slide::BG_EMBED_RID,
+                        rel_types::IMAGE,
+                        &format!("../media/bg{}.{}", idx + 1, ext),
+                    );
+                }
+            }
+            // Background picture media part (default content type for png/jpeg).
+            if let Some(crate::slide::Fill::Picture { data, ext }) = &slide.background {
+                let ct_ext = if ext == "jpg" { "jpeg" } else { ext.as_str() };
+                pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                pkg.set_part(&format!("/ppt/media/bg{}.{}", idx + 1, ext), data.clone());
             }
             // Image media parts (default content types for png/jpeg).
             for img in &slide.images {
