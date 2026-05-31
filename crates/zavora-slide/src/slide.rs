@@ -430,6 +430,27 @@ impl Slide<'_> {
         }
     }
 
+    /// Apply character formatting (bold/italic/underline/size) to every run of a
+    /// placeholder ("title" or "body") on an opened slide, mutating the DOM in
+    /// place. Returns an error if the slide has no DOM or no such placeholder.
+    pub fn format_placeholder(
+        &mut self,
+        ph_type: &str,
+        bold: Option<bool>,
+        italic: Option<bool>,
+        underline: Option<bool>,
+        size_pt: Option<f64>,
+    ) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("formatting requires an opened slide".into()))?;
+        let fmt = zavora_slide_oxml::RunFormat { bold, italic, underline, size_pt };
+        dom.format_placeholder(ph_type, &fmt)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
     /// Add a positioned text box. Returns a mutable reference to the shape so
     /// callers can adjust run formatting.
     pub fn add_text_box(&mut self, text: &str, x: Emu, y: Emu, w: Emu, h: Emu) -> &mut Shape {

@@ -142,6 +142,77 @@ impl SlideDom {
         }
         Ok(())
     }
+
+    /// Apply character formatting to every run of a placeholder (by type, e.g.
+    /// "title" or "body"), mutating each run's `a:rPr` in place. Only the fields
+    /// set in `fmt` change; all other run/shape content is preserved.
+    pub fn format_placeholder(&mut self, ph_type: &str, fmt: &RunFormat) -> Result<()> {
+        let sp = self
+            .find_placeholder_mut(ph_type)
+            .ok_or_else(|| OxmlError::Parse(format!("no {ph_type} placeholder on slide")))?;
+        let tx = find_descendant_mut(sp, b"txBody")
+            .ok_or_else(|| OxmlError::Parse("placeholder has no txBody".into()))?;
+        let mut touched = 0;
+        for p in tx.children.iter_mut() {
+            if let Node::Element(para) = p
+                && para.local_name() == b"p"
+            {
+                for r in para.children.iter_mut() {
+                    if let Node::Element(run) = r
+                        && run.local_name() == b"r"
+                    {
+                        apply_run_format(run, fmt);
+                        touched += 1;
+                    }
+                }
+            }
+        }
+        if touched == 0 {
+            return Err(OxmlError::Parse("placeholder has no runs to format".into()));
+        }
+        Ok(())
+    }
+}
+
+/// Character formatting to apply to runs. `None` fields are left unchanged.
+#[derive(Debug, Clone, Default)]
+pub struct RunFormat {
+    pub bold: Option<bool>,
+    pub italic: Option<bool>,
+    pub underline: Option<bool>,
+    pub size_pt: Option<f64>,
+}
+
+/// Apply formatting to a single `<a:r>` run: find or create its `<a:rPr>` (which
+/// the schema requires as the first child) and set only the requested attrs.
+fn apply_run_format(run: &mut Element, fmt: &RunFormat) {
+    let rpr_idx = run
+        .children
+        .iter()
+        .position(|n| matches!(n, Node::Element(e) if e.local_name() == b"rPr"));
+    let idx = match rpr_idx {
+        Some(i) => i,
+        None => {
+            let mut rpr = new_element(b"a:rPr");
+            rpr.self_closing = true;
+            run.children.insert(0, Node::Element(rpr));
+            0
+        }
+    };
+    if let Node::Element(rpr) = &mut run.children[idx] {
+        if let Some(b) = fmt.bold {
+            rpr.set_attr(b"b", if b { b"1" } else { b"0" });
+        }
+        if let Some(i) = fmt.italic {
+            rpr.set_attr(b"i", if i { b"1" } else { b"0" });
+        }
+        if let Some(u) = fmt.underline {
+            rpr.set_attr(b"u", if u { b"sng" } else { b"none" });
+        }
+        if let Some(sz) = fmt.size_pt {
+            rpr.set_attr(b"sz", ((sz * 100.0) as i64).to_string().as_bytes());
+        }
+    }
 }
 
 /// Build an `<a:p>` with optional pPr template (level applied) and one run.
@@ -307,6 +378,32 @@ mod tests {
         // Title shape untouched (text + formatting preserved).
         assert!(s.contains("<a:t>Old Title</a:t>"), "title preserved: {s}");
         assert!(s.contains(r#"<a:rPr lang="en-US" b="1"/>"#));
+    }
+
+    #[test]
+    fn format_placeholder_mutates_existing_rpr_in_place() {
+        // Title run already has b="1"; bolding off + italic on must mutate that
+        // rPr, not duplicate it, and leave the body shape byte-identical.
+        let mut dom = SlideDom::parse(SLIDE).unwrap();
+        dom.format_placeholder("title", &RunFormat { bold: Some(false), italic: Some(true), ..Default::default() }).unwrap();
+        let s = String::from_utf8(dom.to_bytes()).unwrap();
+        // The single title rPr now carries b="0" i="1" (order: existing b first).
+        assert!(s.contains(r#"<a:rPr lang="en-US" b="0" i="1"/>"#), "title rPr mutated: {s}");
+        // Body shape untouched.
+        assert!(s.contains("<a:r><a:t>Bullet one</a:t></a:r>"), "body verbatim: {s}");
+    }
+
+    #[test]
+    fn format_placeholder_creates_rpr_when_missing() {
+        // Body runs have no rPr; setting size must insert one as the first child
+        // of each run (before a:t), preserving the text.
+        let mut dom = SlideDom::parse(SLIDE).unwrap();
+        dom.format_placeholder("body", &RunFormat { size_pt: Some(20.0), ..Default::default() }).unwrap();
+        let s = String::from_utf8(dom.to_bytes()).unwrap();
+        assert!(s.contains(r#"<a:r><a:rPr sz="2000"/><a:t>Bullet one</a:t></a:r>"#), "rPr inserted: {s}");
+        assert!(s.contains(r#"<a:r><a:rPr sz="2000"/><a:t>Bullet two</a:t></a:r>"#));
+        // Title shape untouched.
+        assert!(s.contains(r#"<a:rPr lang="en-US" b="1"/>"#), "title verbatim: {s}");
     }
 
     #[test]
