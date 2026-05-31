@@ -217,6 +217,10 @@ pub struct RunFormat {
     pub italic: Option<bool>,
     pub underline: Option<bool>,
     pub size_pt: Option<f64>,
+    /// Solid text color as a 6-hex-digit RRGGBB string (no `#`).
+    pub color: Option<String>,
+    /// Latin typeface name.
+    pub font: Option<String>,
 }
 
 /// Apply formatting to a single `<a:r>` run: find or create its `<a:rPr>` (which
@@ -248,7 +252,61 @@ fn apply_run_format(run: &mut Element, fmt: &RunFormat) {
         if let Some(sz) = fmt.size_pt {
             rpr.set_attr(b"sz", ((sz * 100.0) as i64).to_string().as_bytes());
         }
+        if let Some(hex) = &fmt.color {
+            set_rpr_color(rpr, hex);
+        }
+        if let Some(font) = &fmt.font {
+            set_rpr_font(rpr, font);
+        }
+        // A self-closing rPr that gained children must become an open/close pair.
+        if rpr.self_closing && !rpr.children.is_empty() {
+            rpr.self_closing = false;
+            rpr.dirty = true;
+        }
     }
+}
+
+/// Upsert `<a:solidFill><a:srgbClr val=.../></a:solidFill>` in an rPr. Placed
+/// after a leading `<a:ln>` if present (schema fill order), replacing any
+/// existing fill element.
+fn set_rpr_color(rpr: &mut Element, hex: &str) {
+    let val = hex.trim_start_matches('#').to_uppercase();
+    let fill_xml = format!("<a:solidFill><a:srgbClr val=\"{val}\"/></a:solidFill>");
+    let fill = parse_fragment(&fill_xml);
+    // Remove any existing fill element (solidFill/noFill/gradFill/...).
+    rpr.children.retain(|n| !matches!(n, Node::Element(e) if is_fill(e.local_name())));
+    let pos = rpr
+        .children
+        .iter()
+        .position(|n| matches!(n, Node::Element(e) if e.local_name() == b"ln"))
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    rpr.children.insert(pos, fill);
+}
+
+/// Upsert `<a:latin typeface=.../>` in an rPr (fonts follow fills/effects in the
+/// schema), replacing any existing `<a:latin>`.
+fn set_rpr_font(rpr: &mut Element, font: &str) {
+    let latin = parse_fragment(&format!("<a:latin typeface=\"{}\"/>", escape_attr(font)));
+    rpr.children.retain(|n| !matches!(n, Node::Element(e) if e.local_name() == b"latin"));
+    rpr.children.push(latin);
+}
+
+fn is_fill(local: &[u8]) -> bool {
+    matches!(local, b"noFill" | b"solidFill" | b"gradFill" | b"blipFill" | b"pattFill" | b"grpFill")
+}
+
+/// Parse a single-element XML fragment into a DOM node.
+fn parse_fragment(xml: &str) -> Node {
+    Document::parse(xml.as_bytes())
+        .ok()
+        .and_then(|d| d.nodes.into_iter().find(|n| matches!(n, Node::Element(_))))
+        .expect("internal fragment must parse")
+}
+
+/// Minimal attribute-value escape for authored typeface names.
+fn escape_attr(s: &str) -> String {
+    s.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;")
 }
 
 /// Build an `<a:p>` with optional pPr template (level applied) and one run.
@@ -471,6 +529,22 @@ mod tests {
         assert!(s.contains("<a:t>Bullet one</a:t>"));
         // New shape sits inside the spTree.
         assert!(dom.shapes().count() == 3, "now three p:sp shapes");
+    }
+
+    #[test]
+    fn format_placeholder_sets_color_and_font() {
+        // Title run has rPr b="1"; add color + font → solidFill then latin children.
+        let mut dom = SlideDom::parse(SLIDE).unwrap();
+        dom.format_placeholder("title", &RunFormat {
+            color: Some("FF0000".into()),
+            font: Some("Calibri".into()),
+            ..Default::default()
+        }).unwrap();
+        let s = String::from_utf8(dom.to_bytes()).unwrap();
+        // rPr opened (was self-closing) and carries both children in schema order.
+        assert!(s.contains(r#"<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill><a:latin typeface="Calibri"/></a:rPr>"#), "{s}");
+        // Body shape still untouched.
+        assert!(s.contains("<a:r><a:t>Bullet one</a:t></a:r>"));
     }
 
     #[test]

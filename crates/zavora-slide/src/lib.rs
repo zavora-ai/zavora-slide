@@ -21,4 +21,5 @@ pub use theme::ThemeSpec;
 pub use units::{Emu, Layout, RenderFormat, ShapePreset, SlideSize};
 
 pub use zavora_slide_oxml::Align;
+pub use zavora_slide_oxml::RunFormat;
 pub use zavora_slide_layout::{Color, Item, Scene, TextLine};
