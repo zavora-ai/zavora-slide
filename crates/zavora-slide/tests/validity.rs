@@ -3,6 +3,8 @@
 //! every part. These mirror the manual checks that confirmed PowerPoint opens
 //! the file without repair.
 
+mod test_util;
+
 use std::path::Path;
 
 use zavora_slide_opc::OpcPackage;
@@ -28,7 +30,7 @@ fn resolve(base_part: &str, target: &str) -> String {
 }
 
 /// Open a saved deck buffer through the OPC layer.
-fn reopen(p: &Presentation) -> OpcPackage {
+fn reopen_presentation(p: &Presentation) -> OpcPackage {
     let bytes = p.save_to_buffer().unwrap();
     OpcPackage::from_reader(std::io::Cursor::new(bytes)).unwrap()
 }
@@ -37,7 +39,7 @@ fn reopen(p: &Presentation) -> OpcPackage {
 fn required_parts_present() {
     let mut p = Presentation::new();
     p.add_slide(Layout::TitleContent);
-    let pkg = reopen(&p);
+    let pkg = reopen_presentation(&p);
 
     for required in [
         "/ppt/presentation.xml",
@@ -64,7 +66,7 @@ fn all_relationships_resolve() {
     let mut p = Presentation::new();
     p.add_slide(Layout::TitleContent);
     p.add_slide(Layout::Blank);
-    let pkg = reopen(&p);
+    let pkg = reopen_presentation(&p);
 
     // Package-level rels.
     for rel in &pkg.package_rels.items {
@@ -96,7 +98,7 @@ fn all_relationships_resolve() {
 fn every_part_has_a_content_type() {
     let mut p = Presentation::new();
     p.add_slide(Layout::TitleContent);
-    let pkg = reopen(&p);
+    let pkg = reopen_presentation(&p);
 
     for name in pkg.part_names() {
         assert!(

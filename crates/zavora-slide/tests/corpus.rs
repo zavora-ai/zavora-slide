@@ -5,31 +5,14 @@
 //! slide overlays only that slide while preserving every other part; structural
 //! changes fall back to a full model rebuild.
 
+mod test_util;
+
+use test_util::{package_entries, reopen};
 use zavora_slide::Presentation;
 use zavora_slide_opc::OpcPackage;
 use zavora_slide_oxml::Document;
 
 const SAMPLE: &str = "tests/corpus/powerpoint_sample.pptx";
-
-/// All byte-comparable entries of a package: parts, every part's `.rels`, the
-/// package `.rels`, and `[Content_Types].xml`. Used to assert true byte-fidelity
-/// (the earlier `get_part`-only checks silently skipped rels/content-types).
-fn package_entries(pkg: &OpcPackage) -> std::collections::BTreeMap<String, Vec<u8>> {
-    let mut m = std::collections::BTreeMap::new();
-    for name in pkg.part_names() {
-        m.insert(name.to_string(), pkg.get_part(name).unwrap().to_vec());
-    }
-    for (part, rels) in &pkg.part_rels {
-        m.insert(format!("rels::{part}"), rels.to_xml().unwrap());
-    }
-    m.insert("rels::PACKAGE".into(), pkg.package_rels.to_xml().unwrap());
-    m.insert("[Content_Types].xml".into(), pkg.content_types.to_xml().unwrap());
-    m
-}
-
-fn reopen(buf: Vec<u8>) -> OpcPackage {
-    OpcPackage::from_reader(std::io::Cursor::new(buf)).unwrap()
-}
 
 #[test]
 fn dom_round_trips_every_xml_part_byte_for_byte() {

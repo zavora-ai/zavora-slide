@@ -18,6 +18,9 @@ bundled-fonts = []
 
 [dependencies]
 zavora-slide-layout = { workspace = true }
+zavora-slide-oxml = { workspace = true }
 thiserror = { workspace = true }
 base64 = "0.22"
 resvg = "0.45.1"
+rustybuzz = "0.20.1"
+fontdb = "0.23.0"

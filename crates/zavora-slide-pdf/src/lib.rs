@@ -92,13 +92,14 @@ pub fn scenes_to_pdf(scenes: &[Scene]) -> Result<Vec<u8>, PdfError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zavora_slide_layout::{Color, Item, Rect as LRect, Scene, TextLine};
+    use zavora_slide_layout::{Color, Item, Rect as LRect, Scene, TextFrameProps, TextLine};
 
     fn scene() -> Scene {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Text {
             rect: LRect { x: 914400, y: 457200, w: 9000000, h: 914400 },
-            lines: vec![TextLine { text: "Page".into(), size_pt: 32.0, color: Color::BLACK, bold: true, italic: false, level: 0 }],
+            lines: vec![TextLine { text: "Page".into(), size_pt: 32.0, color: Color::BLACK, bold: true, italic: false, level: 0, is_paragraph_start: true, ..TextLine::default() }],
+            props: TextFrameProps::default(),
         });
         s
     }

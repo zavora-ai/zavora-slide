@@ -85,6 +85,59 @@ fn read_image(src: ImageSrc) -> Result<(Vec<u8>, String)> {
     Ok((data, ext))
 }
 
+/// Supported image formats for surgical insert (Req 10.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImageFormat {
+    Png,
+    Jpeg,
+    Gif,
+}
+
+impl ImageFormat {
+    /// Detect image format from magic bytes.
+    pub fn detect(data: &[u8]) -> Option<Self> {
+        if data.len() >= 8 && data[..8] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+            Some(ImageFormat::Png)
+        } else if data.len() >= 2 && data[..2] == [0xFF, 0xD8] {
+            Some(ImageFormat::Jpeg)
+        } else if data.len() >= 6 && (&data[..6] == b"GIF87a" || &data[..6] == b"GIF89a") {
+            Some(ImageFormat::Gif)
+        } else {
+            None
+        }
+    }
+
+    /// File extension for this format.
+    pub fn extension(&self) -> &'static str {
+        match self {
+            ImageFormat::Png => "png",
+            ImageFormat::Jpeg => "jpeg",
+            ImageFormat::Gif => "gif",
+        }
+    }
+
+    /// MIME content type for this format.
+    pub fn content_type(&self) -> &'static str {
+        match self {
+            ImageFormat::Png => "image/png",
+            ImageFormat::Jpeg => "image/jpeg",
+            ImageFormat::Gif => "image/gif",
+        }
+    }
+}
+
+/// Compute a hex-encoded SHA-256 content hash of the given bytes.
+fn content_hash(data: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let hash = Sha256::digest(data);
+    hex_encode(&hash)
+}
+
+/// Encode bytes as lowercase hex string.
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 /// An embedded image: its media bytes/extension plus placement.
 #[derive(Debug, Clone)]
 pub struct ImageMedia {
@@ -175,6 +228,22 @@ impl Table {
     }
 }
 
+/// A chart placeholder for rendering: stores the bounding box and optional title
+/// so the Scene can represent charts as positioned shapes without full chart rendering.
+#[derive(Debug, Clone)]
+pub struct ChartPlaceholder {
+    /// Position x in EMU.
+    pub x: i64,
+    /// Position y in EMU.
+    pub y: i64,
+    /// Width in EMU.
+    pub cx: i64,
+    /// Height in EMU.
+    pub cy: i64,
+    /// Optional chart title (extracted from the chart spec or chart XML).
+    pub title: Option<String>,
+}
+
 /// Stored slide content: the shapes injected into the slide's `spTree`.
 #[derive(Debug, Clone, Default)]
 pub struct SlideData {
@@ -209,8 +278,36 @@ pub struct SlideData {
     /// this tree in place; save serializes it byte-faithfully (untouched content
     /// preserved). `None` for slides authored from scratch.
     pub(crate) dom: Option<zavora_slide_oxml::SlideDom>,
+    /// Editable DOM of the notes-slide part when opened from an existing deck.
+    /// Notes edits mutate this tree in place; save serializes only the notes part
+    /// (surgical, no full rebuild). `None` when the slide has no notes part.
+    pub(crate) notes_dom: Option<zavora_slide_oxml::NotesDom>,
+    /// The part path of the notes slide (e.g. "/ppt/notesSlides/notesSlide1.xml").
+    /// Used by the overlay save to write the edited notes part back.
+    pub(crate) notes_part: Option<String>,
+    /// Media registry for content-hash deduplication (Req 10.3). Maps content
+    /// hash → (media part path, relationship id). When the same image bytes are
+    /// inserted again, the existing media part is reused.
+    pub(crate) media_registry: Vec<MediaEntry>,
+    /// Pending chart entries to be written as parts during save (Part B).
+    pub(crate) charts: Vec<crate::chart::ChartEntry>,
+    /// Graphic frame XML snippets for charts (serialized into the slide's spTree).
+    pub(crate) chart_frames: Vec<String>,
+    /// Chart placeholders for rendering: bounding box + optional title.
+    pub(crate) chart_placeholders: Vec<ChartPlaceholder>,
     /// Next shape id (group shape is id 1, so authored shapes start at 2).
     next_id: u32,
+}
+
+/// A registered media part, keyed by content hash for deduplication.
+#[derive(Debug, Clone)]
+pub struct MediaEntry {
+    /// Hex-encoded SHA-256 hash of the media bytes.
+    pub hash: String,
+    /// Part path in the package (e.g. "/ppt/media/image1.png").
+    pub part_path: String,
+    /// Relationship ID linking the slide to this media part.
+    pub r_id: String,
 }
 
 impl SlideData {
@@ -227,14 +324,38 @@ impl SlideData {
             clone_rels_from: None,
             new_blank_layout_type: None,
             dom: None,
+            notes_dom: None,
+            notes_part: None,
+            media_registry: Vec::new(),
+            charts: Vec::new(),
+            chart_frames: Vec::new(),
+            chart_placeholders: Vec::new(),
             next_id: 2,
         }
     }
 
-    fn alloc_id(&mut self) -> u32 {
+    pub(crate) fn alloc_id(&mut self) -> u32 {
         let id = self.next_id;
         self.next_id += 1;
         id
+    }
+
+    /// Test helper: whether this slide has a parsed notes DOM.
+    #[doc(hidden)]
+    pub fn has_notes_dom(&self) -> bool {
+        self.notes_dom.is_some()
+    }
+
+    /// Test helper: whether this slide has a notes part path.
+    #[doc(hidden)]
+    pub fn has_notes_part(&self) -> bool {
+        self.notes_part.is_some()
+    }
+
+    /// Test helper: read the notes text from the notes DOM (if present).
+    #[doc(hidden)]
+    pub fn notes_dom_text(&self) -> Option<String> {
+        self.notes_dom.as_ref().map(|d| d.notes_text())
     }
 
     /// Find the first placeholder shape of the given type.
@@ -249,6 +370,7 @@ impl SlideData {
         let shapes: String = self.shapes.iter().map(Shape::to_xml).collect();
         let pics: String = self.images.iter().map(ImageMedia::pic_xml).collect();
         let tbls: String = self.tables.iter().map(Table::graphic_frame_xml).collect();
+        let charts: String = self.chart_frames.join("");
         let bg = self.background.as_ref().map(Fill::bg_xml).unwrap_or_default();
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
@@ -257,7 +379,7 @@ impl SlideData {
              xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
              <p:cSld>{bg}<p:spTree>\
              <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
-             <p:grpSpPr/>{shapes}{pics}{tbls}</p:spTree></p:cSld>\
+             <p:grpSpPr/>{shapes}{pics}{tbls}{charts}</p:spTree></p:cSld>\
              <p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
         )
         .into_bytes()
@@ -265,7 +387,7 @@ impl SlideData {
 
     /// Build a render-ready [`Scene`] from this slide's content.
     pub fn to_scene(&self, width_emu: i64, height_emu: i64) -> zavora_slide_layout::Scene {
-        use zavora_slide_layout::{Color, Item, Rect, Scene, TextLine};
+        use zavora_slide_layout::{Color, Item, Rect, Scene, TextFrameProps, TextLine};
 
         let hex = |h: &str| Color::from_hex(h).unwrap_or(Color::BLACK);
         let mut scene = Scene::new(width_emu, height_emu);
@@ -274,6 +396,8 @@ impl SlideData {
             Some(Fill::Picture { data, .. }) => scene.items.push(Item::Image {
                 rect: Rect { x: 0, y: 0, w: width_emu, h: height_emu },
                 data: data.clone(),
+                crop: None,
+                rotation_deg: 0.0,
             }),
             None => {}
         }
@@ -307,11 +431,14 @@ impl SlideData {
                         bold: rp.and_then(|r| r.bold).unwrap_or(false),
                         italic: rp.and_then(|r| r.italic).unwrap_or(false),
                         level: p.level.unwrap_or(0),
+                        has_bullet: p.level.unwrap_or(0) > 0,
+                        is_paragraph_start: true,
+                        ..TextLine::default()
                     }
                 })
                 .collect();
             if !lines.is_empty() {
-                scene.items.push(Item::Text { rect, lines });
+                scene.items.push(Item::Text { rect, lines, props: TextFrameProps::default() });
             }
         }
 
@@ -319,6 +446,8 @@ impl SlideData {
             scene.items.push(Item::Image {
                 rect: Rect { x: img.x, y: img.y, w: img.cx, h: img.cy },
                 data: img.data.clone(),
+                crop: None,
+                rotation_deg: 0.0,
             });
         }
 
@@ -346,7 +475,100 @@ impl SlideData {
                                 bold: r == 0,
                                 italic: false,
                                 level: 0,
+                                is_paragraph_start: true,
+                                ..TextLine::default()
                             }],
+                            props: TextFrameProps::default(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // Charts: light gray placeholder shape + optional title text overlay.
+        // For newly authored charts, use the chart_placeholders vector.
+        for chart in &self.chart_placeholders {
+            let rect = Rect { x: chart.x, y: chart.y, w: chart.cx, h: chart.cy };
+            use zavora_slide_layout::ShapeFill;
+            scene.items.push(Item::Shape {
+                rect,
+                preset: Some("rect".into()),
+                fill: ShapeFill::Solid(Color { r: 220, g: 220, b: 220 }),
+                outline: Some(zavora_slide_layout::Outline {
+                    color: Color { r: 180, g: 180, b: 180 },
+                    width_pt: 1.0,
+                    dash: zavora_slide_layout::DashStyle::Solid,
+                }),
+                rotation_deg: 0.0,
+            });
+            if let Some(title) = &chart.title
+                && !title.is_empty()
+            {
+                scene.items.push(Item::Text {
+                    rect,
+                    lines: vec![TextLine {
+                        text: title.clone(),
+                        size_pt: 14.0,
+                        color: Color { r: 80, g: 80, b: 80 },
+                        bold: true,
+                        italic: false,
+                        level: 0,
+                        is_paragraph_start: true,
+                        ..TextLine::default()
+                    }],
+                    props: TextFrameProps::default(),
+                });
+            }
+        }
+
+        // For opened decks: scan the DOM for chart graphicFrames and render them
+        // as placeholders (if not already covered by chart_placeholders above).
+        if self.chart_placeholders.is_empty()
+            && let Some(dom) = &self.dom
+        {
+            let chart_uri = b"http://schemas.openxmlformats.org/drawingml/2006/chart";
+            for info in dom.shape_inventory() {
+                if info.shape_type == "graphicFrame"
+                    && let Some((x, y, cx, cy)) = info.geometry
+                {
+                    // Check if this graphicFrame is a chart by inspecting the
+                    // graphicData URI in the DOM element.
+                    let is_chart = dom.all_shapes().iter().any(|el| {
+                        if el.local_name() != b"graphicFrame" {
+                            return false;
+                        }
+                        // Match by geometry
+                        let geom_match = el.find_descendant(b"xfrm").is_some_and(|xfrm| {
+                            let off_x = xfrm.children.iter().find_map(|n| match n {
+                                zavora_slide_oxml::Node::Element(e) if e.local_name() == b"off" => {
+                                    e.attr(b"x").and_then(|v| std::str::from_utf8(v).ok()?.parse::<i64>().ok())
+                                }
+                                _ => None,
+                            });
+                            off_x == Some(x)
+                        });
+                        if !geom_match {
+                            return false;
+                        }
+                        // Check for chart URI in graphicData
+                        el.find_descendant(b"graphicData").is_some_and(|gd| {
+                            gd.attr(b"uri") == Some(chart_uri)
+                        })
+                    });
+
+                    if is_chart {
+                        let rect = Rect { x, y, w: cx, h: cy };
+                        use zavora_slide_layout::ShapeFill;
+                        scene.items.push(Item::Shape {
+                            rect,
+                            preset: Some("rect".into()),
+                            fill: ShapeFill::Solid(Color { r: 220, g: 220, b: 220 }),
+                            outline: Some(zavora_slide_layout::Outline {
+                                color: Color { r: 180, g: 180, b: 180 },
+                                width_pt: 1.0,
+                                dash: zavora_slide_layout::DashStyle::Solid,
+                            }),
+                            rotation_deg: 0.0,
                         });
                     }
                 }
@@ -462,9 +684,464 @@ impl Slide<'_> {
             .map_err(|e| SlideError::InvalidInput(e.to_string()))
     }
 
-    /// Add a positioned text box. Returns a mutable reference to the shape so
-    /// callers can adjust run formatting. On an opened slide the box is also
-    /// appended to the slide DOM so it is preserved on save.
+    // ─── Paragraph-level editing (Part A) ────────────────────────────────
+
+    /// Add (append) a paragraph with `text` to the text frame of the shape at
+    /// `shape_idx`. Requires an opened slide with a DOM.
+    pub fn add_paragraph(&mut self, shape_idx: usize, text: &str) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph editing requires an opened slide".into()))?;
+        dom.add_paragraph(shape_idx, text)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Insert a paragraph with `text` at `para_idx` in the text frame of the
+    /// shape at `shape_idx`. Requires an opened slide with a DOM.
+    pub fn insert_paragraph(&mut self, shape_idx: usize, para_idx: usize, text: &str) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph editing requires an opened slide".into()))?;
+        dom.insert_paragraph(shape_idx, para_idx, text)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Delete the paragraph at `para_idx` from the text frame of the shape at
+    /// `shape_idx`. Requires an opened slide with a DOM.
+    pub fn delete_paragraph(&mut self, shape_idx: usize, para_idx: usize) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph editing requires an opened slide".into()))?;
+        dom.delete_paragraph(shape_idx, para_idx)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Reorder the paragraph at `from_idx` to `to_idx` within the text frame of
+    /// the shape at `shape_idx`. Requires an opened slide with a DOM.
+    pub fn move_paragraph(&mut self, shape_idx: usize, from_idx: usize, to_idx: usize) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph editing requires an opened slide".into()))?;
+        dom.reorder_paragraph(shape_idx, from_idx, to_idx)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Set paragraph alignment on the paragraph at `para_idx` in the shape at
+    /// `shape_idx`. Valid values: "l", "ctr", "r", "just", "dist".
+    pub fn set_paragraph_alignment(&mut self, shape_idx: usize, para_idx: usize, algn: &str) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph formatting requires an opened slide".into()))?;
+        dom.set_paragraph_alignment(shape_idx, para_idx, algn)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Set the indent level on the paragraph at `para_idx` in the shape at `shape_idx`.
+    pub fn set_paragraph_level(&mut self, shape_idx: usize, para_idx: usize, level: u8) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph formatting requires an opened slide".into()))?;
+        dom.set_paragraph_indent_level(shape_idx, para_idx, level)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Set space-before on the paragraph at `para_idx` in the shape at `shape_idx`.
+    pub fn set_paragraph_space_before(
+        &mut self,
+        shape_idx: usize,
+        para_idx: usize,
+        value: zavora_slide_oxml::SpacingValue,
+    ) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph formatting requires an opened slide".into()))?;
+        dom.set_paragraph_space_before(shape_idx, para_idx, value)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Set space-after on the paragraph at `para_idx` in the shape at `shape_idx`.
+    pub fn set_paragraph_space_after(
+        &mut self,
+        shape_idx: usize,
+        para_idx: usize,
+        value: zavora_slide_oxml::SpacingValue,
+    ) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph formatting requires an opened slide".into()))?;
+        dom.set_paragraph_space_after(shape_idx, para_idx, value)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Set line spacing on the paragraph at `para_idx` in the shape at `shape_idx`.
+    pub fn set_paragraph_line_spacing(
+        &mut self,
+        shape_idx: usize,
+        para_idx: usize,
+        value: zavora_slide_oxml::SpacingValue,
+    ) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph formatting requires an opened slide".into()))?;
+        dom.set_paragraph_line_spacing(shape_idx, para_idx, value)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Set bullet style on the paragraph at `para_idx` in the shape at `shape_idx`.
+    pub fn set_paragraph_bullet(
+        &mut self,
+        shape_idx: usize,
+        para_idx: usize,
+        bullet: &zavora_slide_oxml::BulletKind,
+    ) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("paragraph formatting requires an opened slide".into()))?;
+        dom.set_paragraph_bullet(shape_idx, para_idx, bullet)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    // ─── Run-level methods ─────────────────────────────────────────────────
+
+    /// Append a run with `text` to the paragraph at `para_idx` in the shape at
+    /// `shape_idx`. Requires an opened slide with a DOM.
+    pub fn add_run(&mut self, shape_idx: usize, para_idx: usize, text: &str) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("run editing requires an opened slide".into()))?;
+        dom.add_run(shape_idx, para_idx, text)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Edit the text content of the run at `run_idx` within the paragraph at
+    /// `para_idx` in the shape at `shape_idx`. Requires an opened slide with a DOM.
+    pub fn edit_run_text(
+        &mut self,
+        shape_idx: usize,
+        para_idx: usize,
+        run_idx: usize,
+        new_text: &str,
+    ) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("run editing requires an opened slide".into()))?;
+        dom.edit_run_text(shape_idx, para_idx, run_idx, new_text)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Delete the run (or line break) at `run_idx` within the paragraph at
+    /// `para_idx` in the shape at `shape_idx`. Requires an opened slide with a DOM.
+    pub fn delete_run(
+        &mut self,
+        shape_idx: usize,
+        para_idx: usize,
+        run_idx: usize,
+    ) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("run editing requires an opened slide".into()))?;
+        dom.delete_run(shape_idx, para_idx, run_idx)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Append a line break (`<a:br/>`) to the paragraph at `para_idx` in the
+    /// shape at `shape_idx`. If `position` is given, inserts at that run index.
+    /// Requires an opened slide with a DOM.
+    pub fn add_line_break(&mut self, shape_idx: usize, para_idx: usize, position: Option<usize>) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("run editing requires an opened slide".into()))?;
+        if let Some(pos) = position {
+            dom.insert_line_break(shape_idx, para_idx, pos)
+                .map_err(|e| SlideError::InvalidInput(e.to_string()))
+        } else {
+            dom.add_line_break(shape_idx, para_idx)
+                .map_err(|e| SlideError::InvalidInput(e.to_string()))
+        }
+    }
+
+    /// Apply character formatting to the run at `run_idx` within the paragraph
+    /// at `para_idx` in the shape at `shape_idx`. Requires an opened slide with a DOM.
+    pub fn format_run(
+        &mut self,
+        shape_idx: usize,
+        para_idx: usize,
+        run_idx: usize,
+        fmt: &zavora_slide_oxml::RunFormat,
+    ) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("run formatting requires an opened slide".into()))?;
+        dom.format_run(shape_idx, para_idx, run_idx, fmt)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Set the auto-fit behavior on a shape's text frame.
+    /// Requires an opened slide with a DOM.
+    pub fn set_autofit(&mut self, shape_idx: usize, autofit: &zavora_slide_oxml::AutoFit) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("autofit requires an opened slide".into()))?;
+        dom.set_autofit(shape_idx, autofit)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Return the number of runs in the paragraph at `para_idx` in the shape at
+    /// `shape_idx`. Requires an opened slide with a DOM.
+    pub fn run_count(&self, shape_idx: usize, para_idx: usize) -> Result<usize> {
+        let dom = self
+            .data
+            .dom
+            .as_ref()
+            .ok_or_else(|| SlideError::Unsupported("run access requires an opened slide".into()))?;
+        dom.runs(shape_idx, para_idx)
+            .map(|v| v.len())
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    // --- Shape geometry / lifecycle (Part D) ------------------------------------
+
+    /// Set the geometry (position/size/rotation) of the shape at `shape_idx`.
+    /// All values are in EMU. Rotation is in 60,000ths of a degree. Requires
+    /// an opened slide with a DOM.
+    pub fn set_shape_geometry(
+        &mut self,
+        shape_idx: usize,
+        x: i64,
+        y: i64,
+        cx: i64,
+        cy: i64,
+        rot: Option<i64>,
+    ) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("shape geometry requires an opened slide".into()))?;
+        dom.set_shape_geometry(shape_idx, x, y, cx, cy, rot)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Delete the shape at `shape_idx` from the slide. Requires an opened
+    /// slide with a DOM.
+    pub fn delete_shape(&mut self, shape_idx: usize) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("shape deletion requires an opened slide".into()))?;
+        dom.delete_shape(shape_idx)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Reorder the shape at `from_idx` to `to_idx` within the slide's shape
+    /// tree, changing its z-order. Requires an opened slide with a DOM.
+    pub fn reorder_shape(&mut self, from_idx: usize, to_idx: usize) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("shape reorder requires an opened slide".into()))?;
+        dom.reorder_shape(from_idx, to_idx)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Set the fill of an existing shape by index. Requires an opened slide.
+    pub fn set_shape_fill(&mut self, shape_idx: usize, fill: &zavora_slide_oxml::FillSpec) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_shape_fill requires an opened slide".into()))?;
+        dom.set_shape_fill(shape_idx, fill)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    /// Set the outline (line) of an existing shape by index. Requires an opened slide.
+    pub fn set_shape_line(&mut self, shape_idx: usize, line: &zavora_slide_oxml::LineSpec) -> Result<()> {
+        let dom = self
+            .data
+            .dom
+            .as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_shape_line requires an opened slide".into()))?;
+        dom.set_shape_line(shape_idx, line)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    // ─── Table operations ─────────────────────────────────────────────────
+
+    pub fn table_add_row(&mut self, shape_idx: usize, height_emu: i64) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("table_add_row requires an opened slide".into()))?;
+        dom.add_table_row(shape_idx, height_emu)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn table_remove_row(&mut self, shape_idx: usize, row_idx: usize) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("table_remove_row requires an opened slide".into()))?;
+        dom.remove_table_row(shape_idx, row_idx)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn table_add_column(&mut self, shape_idx: usize, width_emu: i64) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("table_add_column requires an opened slide".into()))?;
+        dom.add_table_column(shape_idx, width_emu)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn table_remove_column(&mut self, shape_idx: usize, col_idx: usize) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("table_remove_column requires an opened slide".into()))?;
+        dom.remove_table_column(shape_idx, col_idx)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn table_merge_cells(&mut self, shape_idx: usize, r1: usize, c1: usize, r2: usize, c2: usize) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("merge_cells requires an opened slide".into()))?;
+        dom.merge_table_cells(shape_idx, r1, c1, r2, c2)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn table_split_cell(&mut self, shape_idx: usize, row: usize, col: usize) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("split_cell requires an opened slide".into()))?;
+        dom.split_table_cell(shape_idx, row, col)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn table_set_column_width(&mut self, shape_idx: usize, col_idx: usize, width_emu: i64) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_column_width requires an opened slide".into()))?;
+        dom.set_column_width(shape_idx, col_idx, width_emu)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn table_set_row_height(&mut self, shape_idx: usize, row_idx: usize, height_emu: i64) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_row_height requires an opened slide".into()))?;
+        dom.set_row_height(shape_idx, row_idx, height_emu)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn table_set_cell_text(&mut self, shape_idx: usize, row: usize, col: usize, text: &str) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_cell_text requires an opened slide".into()))?;
+        dom.set_cell_text(shape_idx, row, col, text)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn table_set_cell_fill(&mut self, shape_idx: usize, row: usize, col: usize, hex: &str) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_cell_fill requires an opened slide".into()))?;
+        let fill = zavora_slide_oxml::FillSpec::Solid { color: zavora_slide_oxml::ColorSpec::Rgb(hex.to_string()) }; dom.set_cell_fill(shape_idx, row, col, &fill)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn set_image_crop(&mut self, shape_idx: usize, left: u32, top: u32, right: u32, bottom: u32) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_image_crop requires an opened slide".into()))?;
+        dom.set_image_crop(shape_idx, left, top, right, bottom)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn set_image_rotation(&mut self, shape_idx: usize, rotation_deg: f64) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_image_rotation requires an opened slide".into()))?;
+        let rot = (rotation_deg * 60_000.0) as i64;
+        dom.set_shape_rotation(shape_idx, rot)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    // ─── Hyperlink / click action / footer ────────────────────────────────
+
+    pub fn set_run_hyperlink(&mut self, shape_idx: usize, para_idx: usize, run_idx: usize, url: &str) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_run_hyperlink requires an opened slide".into()))?;
+        let r_id = format!("rId{}", shape_idx * 100 + para_idx * 10 + run_idx + 900); dom.set_run_hyperlink(shape_idx, para_idx, run_idx, url, &r_id)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn set_shape_click_action(&mut self, shape_idx: usize, action: &zavora_slide_oxml::ClickAction) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_shape_click_action requires an opened slide".into()))?;
+        dom.set_shape_click_action(shape_idx, action)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn set_footer_text(&mut self, text: &str) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_footer_text requires an opened slide".into()))?;
+        dom.set_footer_text(text)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    pub fn set_footer_visible(&mut self, visible: bool) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("set_footer_visible requires an opened slide".into()))?;
+        dom.set_footer_visible(visible)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))
+    }
+
+    // ─── Shape vocabulary (connectors, freeform) ──────────────────────────
+
+    pub fn add_autoshape_preset(&mut self, preset: &str, x: i64, y: i64, cx: i64, cy: i64) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("add_autoshape requires an opened slide".into()))?;
+        dom.add_autoshape(preset, x, y, cx, cy)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn add_connector(&mut self, conn_type: zavora_slide_oxml::ConnectorType, x: i64, y: i64, cx: i64, cy: i64) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("add_connector requires an opened slide".into()))?;
+        dom.add_connector(conn_type, None, None, x, y, cx, cy)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn add_freeform(&mut self, path: &zavora_slide_oxml::FreeformPath, x: i64, y: i64, cx: i64, cy: i64) -> Result<()> {
+        let dom = self.data.dom.as_mut()
+            .ok_or_else(|| SlideError::Unsupported("add_freeform requires an opened slide".into()))?;
+        dom.add_freeform(path, x, y, cx, cy)
+            .map_err(|e| SlideError::InvalidInput(e.to_string()))?;
+        Ok(())
+    }
     pub fn add_text_box(&mut self, text: &str, x: Emu, y: Emu, w: Emu, h: Emu) -> &mut Shape {
         if let Some(dom) = self.data.dom.as_mut() {
             let _ = dom.add_text_box(text, x.0, y.0, w.0, h.0);
@@ -477,8 +1154,12 @@ impl Slide<'_> {
     }
 
     /// Add an auto-shape with the given preset geometry. Returns a mutable
-    /// reference so callers can set fill/outline.
+    /// reference so callers can set fill/outline. On an opened slide the shape
+    /// is also appended to the slide DOM so it is preserved on save.
     pub fn add_shape(&mut self, preset: crate::units::ShapePreset, x: Emu, y: Emu, w: Emu, h: Emu) -> &mut Shape {
+        if let Some(dom) = self.data.dom.as_mut() {
+            let _ = dom.add_autoshape(preset.prst(), x.0, y.0, w.0, h.0);
+        }
         let id = self.data.alloc_id();
         let sp = Shape::auto_shape(id, preset.prst(), x.0, y.0, w.0, h.0);
         self.data.shapes.push(sp);
@@ -519,8 +1200,36 @@ impl Slide<'_> {
         Ok(())
     }
 
+    /// Add a chart to the slide at the given EMU position/size.
+    ///
+    /// The chart is materialized as a chart part (`ppt/charts/chartN.xml`) and an
+    /// embedded workbook (`ppt/embeddings/Microsoft_Excel_WorksheetN.xlsx`) during
+    /// save, with correct relationships and content types.
+    pub fn add_chart(
+        &mut self,
+        spec: &crate::chart::ChartSpec,
+        x: Emu,
+        y: Emu,
+        w: Emu,
+        h: Emu,
+        chart_index: usize,
+    ) -> Result<()> {
+        crate::chart::add_chart_to_slide(self.data, spec, x.0, y.0, w.0, h.0, chart_index)
+    }
+
     /// Set (or replace) the slide's speaker notes.
+    ///
+    /// On an opened slide with an existing notes part, this edits the notes DOM
+    /// in place (surgical — only the notes part changes). On a new slide or one
+    /// without an existing notes part, falls back to the build-model path.
     pub fn set_notes(&mut self, text: &str) {
+        // Surgical DOM path: edit the notes part in place.
+        if let Some(notes_dom) = self.data.notes_dom.as_mut()
+            && notes_dom.set_notes_text(text).is_ok()
+        {
+            self.data.notes = Some(text.to_string());
+            return;
+        }
         self.data.notes = Some(text.to_string());
     }
 
@@ -541,6 +1250,92 @@ impl Slide<'_> {
             cy: h.0,
         });
         Ok(())
+    }
+
+    /// Insert an image into an opened slide surgically (Req 10.3, 10.4).
+    ///
+    /// Accepts raw image bytes + position/size. Detects the format from magic
+    /// bytes (PNG, JPEG, GIF). Computes a content hash (SHA-256) and deduplicates:
+    /// if the same bytes already exist as a media part, the existing part is
+    /// reused and only a new relationship is added. Otherwise a new media part is
+    /// created at `ppt/media/imageN.{ext}`.
+    ///
+    /// On an opened slide (with a DOM), this calls `SlideDom::insert_picture` to
+    /// surgically add the `<p:pic>` element. On a build-model slide, it falls
+    /// back to the `images` list.
+    ///
+    /// Returns the shape id of the inserted picture.
+    pub fn insert_image_bytes(
+        &mut self,
+        data: &[u8],
+        x: Emu,
+        y: Emu,
+        w: Emu,
+        h: Emu,
+    ) -> Result<u32> {
+        let format = ImageFormat::detect(data)
+            .ok_or_else(|| SlideError::InvalidInput(
+                "unsupported image format (expected PNG, JPEG, or GIF magic bytes)".into(),
+            ))?;
+
+        let hash = content_hash(data);
+
+        // Check for deduplication: if the same content hash already exists, reuse
+        // the existing media part and just add a new relationship.
+        let (r_id, _part_path, is_new) =
+            if let Some(entry) = self.data.media_registry.iter().find(|e| e.hash == hash) {
+                (entry.r_id.clone(), entry.part_path.clone(), false)
+            } else {
+                // Allocate a new media part path.
+                let media_idx = self.data.media_registry.len() + 1;
+                let ext = format.extension();
+                let part_path = format!("/ppt/media/image{media_idx}.{ext}");
+                // Allocate a new relationship ID (start at rId10 to avoid collisions).
+                let r_id = format!("rId{}", 10 + self.data.media_registry.len() + self.data.images.len());
+                self.data.media_registry.push(MediaEntry {
+                    hash: hash.clone(),
+                    part_path: part_path.clone(),
+                    r_id: r_id.clone(),
+                });
+                (r_id, part_path, true)
+            };
+
+        // Insert the picture into the DOM if available (surgical path).
+        let name = format!("Picture {}", self.data.media_registry.len());
+        let shape_id = if let Some(dom) = self.data.dom.as_mut() {
+            dom.insert_picture(x.0, y.0, w.0, h.0, &r_id, &name)
+                .map_err(|e| SlideError::InvalidInput(e.to_string()))?
+        } else {
+            // Fallback: add to the build-model images list.
+            let id = self.data.alloc_id();
+            self.data.images.push(ImageMedia {
+                ext: format.extension().to_string(),
+                data: data.to_vec(),
+                embed_rid: r_id.clone(),
+                id,
+                x: x.0,
+                y: y.0,
+                cx: w.0,
+                cy: h.0,
+            });
+            id
+        };
+
+        // Store the media bytes and metadata for the overlay save to pick up.
+        if is_new {
+            self.data.images.push(ImageMedia {
+                ext: format.extension().to_string(),
+                data: data.to_vec(),
+                embed_rid: r_id,
+                id: shape_id,
+                x: x.0,
+                y: y.0,
+                cx: w.0,
+                cy: h.0,
+            });
+        }
+
+        Ok(shape_id)
     }
 
     /// Set the slide background fill.
@@ -860,5 +1655,284 @@ mod tests {
         assert!(xml.contains("<a:t>H1</a:t>"));
         assert!(xml.contains("v &amp; w"));
         assert_eq!(xml.matches("<a:tr ").count(), 2);
+    }
+
+    // ─── Tests for insert_image_bytes (Req 10.3, 10.4) ─────────────────────
+
+    /// Minimal valid PNG (1x1 pixel, transparent).
+    fn tiny_png() -> Vec<u8> {
+        vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+            0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+            0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+            0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+            0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC,
+            0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+            0x44, 0xAE, 0x42, 0x60, 0x82,
+        ]
+    }
+
+    /// Minimal GIF89a header (enough for magic-byte detection).
+    fn tiny_gif() -> Vec<u8> {
+        let mut data = b"GIF89a".to_vec();
+        // Logical screen descriptor (1x1, no GCT)
+        data.extend_from_slice(&[0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]);
+        // Image descriptor
+        data.extend_from_slice(&[0x2C, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00]);
+        // LZW minimum code size + block
+        data.extend_from_slice(&[0x02, 0x02, 0x4C, 0x01, 0x00]);
+        // Trailer
+        data.push(0x3B);
+        data
+    }
+
+    #[test]
+    fn insert_picture_creates_pic_element_in_dom() {
+        // Create a slide with a DOM (simulating an opened slide).
+        let slide_xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
+            <p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" \
+            xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" \
+            xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
+            <p:cSld><p:spTree>\
+            <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
+            <p:grpSpPr/>\
+            <p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title 1\"/><p:cNvSpPr/>\
+            <p:nvPr><p:ph type=\"title\"/></p:nvPr></p:nvSpPr><p:spPr/>\
+            <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Hello</a:t></a:r></a:p></p:txBody></p:sp>\
+            </p:spTree></p:cSld></p:sld>";
+        let mut d = SlideData::new();
+        d.dom = Some(zavora_slide_oxml::SlideDom::parse(slide_xml).unwrap());
+
+        let mut s = slide(&mut d);
+        let png_data = tiny_png();
+        let shape_id = s.insert_image_bytes(
+            &png_data,
+            Emu::inches(1.0),
+            Emu::inches(1.0),
+            Emu::inches(3.0),
+            Emu::inches(2.0),
+        ).unwrap();
+
+        assert!(shape_id >= 3); // id 1 = grpSp, id 2 = title shape
+
+        // Verify the DOM contains a p:pic element.
+        let dom = d.dom.as_ref().unwrap();
+        let dom_xml = String::from_utf8(dom.to_bytes()).unwrap();
+        assert!(dom_xml.contains("<p:pic>"), "DOM should contain <p:pic>");
+        assert!(dom_xml.contains("r:embed="), "DOM should contain r:embed");
+        assert!(dom_xml.contains("noChangeAspect=\"1\""));
+    }
+
+    #[test]
+    fn insert_picture_has_correct_geometry() {
+        let slide_xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
+            <p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" \
+            xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" \
+            xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
+            <p:cSld><p:spTree>\
+            <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
+            <p:grpSpPr/></p:spTree></p:cSld></p:sld>";
+        let mut d = SlideData::new();
+        d.dom = Some(zavora_slide_oxml::SlideDom::parse(slide_xml).unwrap());
+
+        let mut s = slide(&mut d);
+        let png_data = tiny_png();
+        s.insert_image_bytes(
+            &png_data,
+            Emu(914400),   // 1 inch
+            Emu(1828800),  // 2 inches
+            Emu(2743200),  // 3 inches
+            Emu(1371600),  // 1.5 inches
+        ).unwrap();
+
+        let dom = d.dom.as_ref().unwrap();
+        let dom_xml = String::from_utf8(dom.to_bytes()).unwrap();
+        // Check xfrm geometry values.
+        assert!(dom_xml.contains("x=\"914400\""), "x should be 914400");
+        assert!(dom_xml.contains("y=\"1828800\""), "y should be 1828800");
+        assert!(dom_xml.contains("cx=\"2743200\""), "cx should be 2743200");
+        assert!(dom_xml.contains("cy=\"1371600\""), "cy should be 1371600");
+    }
+
+    #[test]
+    fn content_hash_dedupe_same_image_twice() {
+        let slide_xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
+            <p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" \
+            xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" \
+            xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
+            <p:cSld><p:spTree>\
+            <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
+            <p:grpSpPr/></p:spTree></p:cSld></p:sld>";
+        let mut d = SlideData::new();
+        d.dom = Some(zavora_slide_oxml::SlideDom::parse(slide_xml).unwrap());
+
+        let png_data = tiny_png();
+        {
+            let mut s = slide(&mut d);
+            // Insert the same image twice at different positions.
+            s.insert_image_bytes(
+                &png_data,
+                Emu::inches(0.0),
+                Emu::inches(0.0),
+                Emu::inches(2.0),
+                Emu::inches(2.0),
+            ).unwrap();
+            s.insert_image_bytes(
+                &png_data,
+                Emu::inches(3.0),
+                Emu::inches(3.0),
+                Emu::inches(2.0),
+                Emu::inches(2.0),
+            ).unwrap();
+        }
+
+        // Only one media entry should exist (deduplication).
+        assert_eq!(d.media_registry.len(), 1, "same image should be deduplicated");
+        // Only one media part in images (the first insert creates it).
+        assert_eq!(d.images.len(), 1, "only one media part should be stored");
+        // But the DOM should have two <p:pic> elements.
+        let dom = d.dom.as_ref().unwrap();
+        let dom_xml = String::from_utf8(dom.to_bytes()).unwrap();
+        assert_eq!(dom_xml.matches("<p:pic>").count(), 2, "DOM should have 2 pictures");
+    }
+
+    #[test]
+    fn gif_format_accepted_by_magic_bytes() {
+        let slide_xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
+            <p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" \
+            xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" \
+            xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
+            <p:cSld><p:spTree>\
+            <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
+            <p:grpSpPr/></p:spTree></p:cSld></p:sld>";
+        let mut d = SlideData::new();
+        d.dom = Some(zavora_slide_oxml::SlideDom::parse(slide_xml).unwrap());
+
+        let gif_data = tiny_gif();
+        let mut s = slide(&mut d);
+        let result = s.insert_image_bytes(
+            &gif_data,
+            Emu::inches(1.0),
+            Emu::inches(1.0),
+            Emu::inches(2.0),
+            Emu::inches(2.0),
+        );
+        assert!(result.is_ok(), "GIF should be accepted");
+
+        // Verify the media entry has the correct extension.
+        assert_eq!(d.media_registry.len(), 1);
+        assert!(d.media_registry[0].part_path.ends_with(".gif"));
+    }
+
+    #[test]
+    fn insert_picture_preserves_sibling_shapes() {
+        let slide_xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\
+            <p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" \
+            xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" \
+            xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">\
+            <p:cSld><p:spTree>\
+            <p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>\
+            <p:grpSpPr/>\
+            <p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title 1\"/><p:cNvSpPr/>\
+            <p:nvPr><p:ph type=\"title\"/></p:nvPr></p:nvSpPr><p:spPr/>\
+            <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>Keep me</a:t></a:r></a:p></p:txBody></p:sp>\
+            </p:spTree></p:cSld></p:sld>";
+        let mut d = SlideData::new();
+        d.dom = Some(zavora_slide_oxml::SlideDom::parse(slide_xml).unwrap());
+
+        let mut s = slide(&mut d);
+        s.insert_image_bytes(
+            &tiny_png(),
+            Emu::inches(1.0),
+            Emu::inches(1.0),
+            Emu::inches(2.0),
+            Emu::inches(2.0),
+        ).unwrap();
+
+        // The original title shape should still be present and unchanged.
+        let dom = d.dom.as_ref().unwrap();
+        let dom_xml = String::from_utf8(dom.to_bytes()).unwrap();
+        assert!(dom_xml.contains("<a:t>Keep me</a:t>"), "sibling shape text preserved");
+        assert!(dom_xml.contains("name=\"Title 1\""), "sibling shape name preserved");
+        // Both the original shape and the new picture should be present.
+        assert!(dom_xml.contains("<p:sp>"), "original sp preserved");
+        assert!(dom_xml.contains("<p:pic>"), "new pic added");
+    }
+
+    #[test]
+    fn image_format_detect_works() {
+        // PNG
+        assert_eq!(
+            ImageFormat::detect(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00]),
+            Some(ImageFormat::Png)
+        );
+        // JPEG
+        assert_eq!(
+            ImageFormat::detect(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some(ImageFormat::Jpeg)
+        );
+        // GIF87a
+        assert_eq!(
+            ImageFormat::detect(b"GIF87a\x01\x00"),
+            Some(ImageFormat::Gif)
+        );
+        // GIF89a
+        assert_eq!(
+            ImageFormat::detect(b"GIF89a\x01\x00"),
+            Some(ImageFormat::Gif)
+        );
+        // Unknown
+        assert_eq!(ImageFormat::detect(&[0x00, 0x01, 0x02]), None);
+    }
+
+    #[test]
+    fn scene_includes_chart_placeholder() {
+        use zavora_slide_layout::Item;
+        let mut d = SlideData::new();
+        d.chart_placeholders.push(ChartPlaceholder {
+            x: 914400,
+            y: 914400,
+            cx: 5000000,
+            cy: 3000000,
+            title: Some("Sales Chart".into()),
+        });
+        let scene = d.to_scene(12192000, 6858000);
+        // The scene should not be empty — it must contain the chart placeholder.
+        assert!(!scene.items.is_empty(), "scene should have items for the chart");
+        // There should be a Shape item (the gray placeholder box).
+        let shapes = scene.items.iter().filter(|i| matches!(i, Item::Shape { .. })).count();
+        assert!(shapes >= 1, "expected at least one Shape item for the chart placeholder");
+        // There should be a Text item (the chart title overlay).
+        let texts = scene.items.iter().filter(|i| matches!(i, Item::Text { .. })).count();
+        assert!(texts >= 1, "expected a Text item for the chart title");
+        // Verify the bounding box is correct by checking the Shape's rect.
+        let chart_shape = scene.items.iter().find(|i| matches!(i, Item::Shape { .. })).unwrap();
+        if let Item::Shape { rect, .. } = chart_shape {
+            assert_eq!(rect.x, 914400);
+            assert_eq!(rect.y, 914400);
+            assert_eq!(rect.w, 5000000);
+            assert_eq!(rect.h, 3000000);
+        }
+    }
+
+    #[test]
+    fn scene_chart_placeholder_no_title() {
+        use zavora_slide_layout::Item;
+        let mut d = SlideData::new();
+        d.chart_placeholders.push(ChartPlaceholder {
+            x: 0,
+            y: 0,
+            cx: 4000000,
+            cy: 2000000,
+            title: None,
+        });
+        let scene = d.to_scene(12192000, 6858000);
+        // Should have the shape but no text overlay.
+        let shapes = scene.items.iter().filter(|i| matches!(i, Item::Shape { .. })).count();
+        let texts = scene.items.iter().filter(|i| matches!(i, Item::Text { .. })).count();
+        assert_eq!(shapes, 1);
+        assert_eq!(texts, 0);
     }
 }

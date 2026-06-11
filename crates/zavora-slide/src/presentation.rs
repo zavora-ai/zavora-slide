@@ -29,6 +29,8 @@ pub struct Presentation {
     /// from the surviving slides' preserved identities and prunes removed parts,
     /// keeping master/layouts/theme/other parts byte-identical.
     reordered: bool,
+    /// Pending core properties for new decks (applied during build_package).
+    pending_core_props: Option<crate::core_properties::CoreProperties>,
 }
 
 impl Presentation {
@@ -44,6 +46,7 @@ impl Presentation {
             slides: Vec::new(),
             source: None,
             reordered: false,
+            pending_core_props: None,
         }
     }
 
@@ -107,6 +110,26 @@ impl Presentation {
                         let mut slide = Slide { data: &mut data, slide_cx: cx, slide_cy: cy };
                         slide.sync_build_bullets_public(&bullets);
                     }
+
+                    // Parse the notes-slide part if the slide has one (via its rels).
+                    if let Some(slide_rels) = pkg.get_part_rels(part_path)
+                        && let Some(notes_rel) = slide_rels.get_by_type(rel_types::NOTES_SLIDE)
+                    {
+                        let notes_path = normalize_part_path(
+                            &OpcPackage::resolve_rel_target(part_path, &notes_rel.target)
+                        );
+                        if let Some(notes_bytes) = pkg.get_part(&notes_path)
+                            && let Ok(notes_dom) = zavora_slide_oxml::NotesDom::parse(notes_bytes)
+                        {
+                            // Populate the build-model notes from the DOM.
+                            let text = notes_dom.notes_text();
+                            if !text.is_empty() {
+                                data.notes = Some(text);
+                            }
+                            data.notes_dom = Some(notes_dom);
+                            data.notes_part = Some(notes_path);
+                        }
+                    }
                 }
             }
             data.dirty = false;
@@ -143,6 +166,39 @@ impl Presentation {
     pub fn apply_theme(&mut self, theme: &crate::theme::ThemeSpec) {
         self.invalidate_source();
         self.theme = RawPart { xml: theme.build_theme_xml() };
+    }
+
+    /// Read core document properties from `docProps/core.xml`.
+    ///
+    /// On an opened deck, reads from the source package. On a new deck, returns
+    /// the engine defaults (author = "zavora-slide").
+    pub fn core_properties(&self) -> crate::core_properties::CoreProperties {
+        if let Some(pkg) = &self.source
+            && let Some(xml) = pkg.get_part("/docProps/core.xml")
+        {
+            return crate::core_properties::parse_core_properties(xml);
+        }
+        // New deck: parse from the template default.
+        crate::core_properties::parse_core_properties(template::CORE_XML.as_bytes())
+    }
+
+    /// Set core document properties. Only fields that are `Some` are written;
+    /// `None` fields preserve existing values in `docProps/core.xml` (byte-
+    /// preserving for opened decks).
+    pub fn set_core_properties(&mut self, props: &crate::core_properties::CoreProperties) {
+        if let Some(pkg) = &mut self.source {
+            // Opened deck: apply to existing core.xml bytes (surgical).
+            let existing = pkg
+                .get_part("/docProps/core.xml")
+                .unwrap_or(template::CORE_XML.as_bytes())
+                .to_vec();
+            let updated = crate::core_properties::apply_core_properties(&existing, props);
+            pkg.set_part("/docProps/core.xml", updated);
+        } else {
+            // New deck: we store the properties and apply them during build_package.
+            // For simplicity, store them in a field that build_package reads.
+            self.pending_core_props = Some(props.clone());
+        }
     }
 
     /// Rebuild `sldIdLst` from the current slide order: slide N (0-based) gets
@@ -304,6 +360,18 @@ impl Presentation {
         Some((s.source_part.clone()?, s.dom.as_ref()?.to_bytes()))
     }
 
+    /// Test helper: return the current theme XML as a string.
+    #[doc(hidden)]
+    pub fn theme_xml_for_test(&self) -> String {
+        String::from_utf8_lossy(&self.theme.to_xml()).into_owned()
+    }
+
+    /// Test helper: return a reference to the internal slide data for assertions.
+    #[doc(hidden)]
+    pub fn slides_for_test(&self) -> &[SlideData] {
+        &self.slides
+    }
+
     /// Render a slide to PNG or SVG bytes at a default width (1280px).
     pub fn render_slide(&self, idx: usize, format: crate::units::RenderFormat) -> Result<Vec<u8>> {
         let data = self
@@ -338,25 +406,47 @@ impl Presentation {
     }
 
     /// A text outline of the deck: per slide, its shape text and any notes.
+    ///
+    /// Produces a rich Markdown rendering with slide boundaries, tables as
+    /// Markdown tables, notes as blockquotes, and shape text with labels.
     pub fn to_markdown(&self) -> String {
-        let mut out = String::new();
-        for (i, s) in self.slides.iter().enumerate() {
-            out.push_str(&format!("# Slide {}\n", i + 1));
-            for sp in &s.shapes {
-                for p in &sp.body.paragraphs {
-                    let t = p.text();
-                    if t.is_empty() {
-                        continue;
-                    }
-                    let lvl = p.level.unwrap_or(0) as usize;
-                    out.push_str(&format!("{}- {}\n", "  ".repeat(lvl), t));
-                }
-            }
-            if let Some(n) = &s.notes {
-                out.push_str(&format!("> notes: {n}\n"));
-            }
-        }
-        out
+        crate::extraction::to_markdown(self)
+    }
+
+    /// Update a chart's data on an opened deck.
+    ///
+    /// Replaces the chart's categories and series values, updating both the chart
+    /// XML and its embedded workbook consistently. All unmodeled chart features
+    /// (styling, effects, formatting) are preserved via the lossless DOM.
+    ///
+    /// # Arguments
+    /// * `slide_idx` - 0-based slide index
+    /// * `chart_idx` - 0-based chart index on that slide (by relationship order)
+    /// * `update` - The new categories and series data
+    ///
+    /// # Errors
+    /// Returns an error if the deck was not opened from a file, the slide/chart
+    /// index is out of range, or the chart part cannot be found.
+    pub fn update_chart_data(
+        &mut self,
+        slide_idx: usize,
+        chart_idx: usize,
+        update: &crate::chart::ChartDataUpdate,
+    ) -> Result<()> {
+        let pkg = self.source.as_mut().ok_or_else(|| {
+            SlideError::Unsupported(
+                "update_chart_data requires a deck opened from a file".into(),
+            )
+        })?;
+
+        let slide_part = self
+            .slides
+            .get(slide_idx)
+            .and_then(|s| s.source_part.as_deref())
+            .ok_or_else(|| SlideError::NotFound(format!("slide index {slide_idx}")))?
+            .to_string();
+
+        crate::chart::update_chart_data(pkg, &slide_part, chart_idx, update)
     }
 
     /// Save to a file path.
@@ -397,46 +487,58 @@ impl Presentation {
     /// (injecting a notesMaster into a foreign deck risks a repair prompt).
     fn overlay_package(&self) -> Result<Option<OpcPackage>> {
         let Some(src) = &self.source else { return Ok(None) };
-        if self.slides.iter().any(|s| s.dirty && s.notes.is_some()) {
+        // Only fall back to full rebuild if a dirty slide has notes but NO
+        // notes_dom (i.e. it's a brand-new notes part that needs a notesMaster
+        // injected — which risks a repair prompt on foreign decks).
+        if self.slides.iter().any(|s| s.dirty && s.notes.is_some() && s.notes_dom.is_none()) {
             return Ok(None);
         }
         let mut pkg = src.clone();
         for slide in self.slides.iter().filter(|s| s.dirty) {
             let Some(part) = &slide.source_part else { continue };
-            let has_new_media = slide.background.is_some() || !slide.images.is_empty();
+            let has_new_media = slide.background.is_some() || !slide.images.is_empty() || !slide.charts.is_empty();
 
             // Surgical DOM path: serialize the mutated tree, leave rels untouched.
             if let (Some(dom), false) = (&slide.dom, has_new_media) {
                 pkg.set_part(part, dom.to_bytes());
-                continue;
+            } else {
+                // Media path: re-author the slide and rebuild its media rels, keeping
+                // the original layout link.
+                let layout_target = pkg
+                    .get_part_rels(part)
+                    .and_then(|r| r.get_by_type(rel_types::SLIDE_LAYOUT))
+                    .map(|r| r.target.clone());
+                let mut rels = zavora_slide_opc::Relationships::new();
+                if let Some(t) = &layout_target {
+                    rels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, t);
+                }
+                let stem = part.rsplit('/').next().unwrap_or("slide").trim_end_matches(".xml");
+                if let Some(crate::slide::Fill::Picture { data, ext }) = &slide.background {
+                    rels.add_with_id(crate::slide::BG_EMBED_RID, rel_types::IMAGE, &format!("../media/bg_{stem}.{ext}"));
+                    let ct_ext = if ext == "jpg" { "jpeg" } else { ext.as_str() };
+                    pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                    pkg.set_part(&format!("/ppt/media/bg_{stem}.{ext}"), data.clone());
+                }
+                for img in &slide.images {
+                    let name = format!("img_{stem}_{}.{}", img.id, img.ext);
+                    rels.add_with_id(&img.embed_rid, rel_types::IMAGE, &format!("../media/{name}"));
+                    let ct_ext = if img.ext == "jpg" { "jpeg" } else { img.ext.as_str() };
+                    pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                    pkg.set_part(&format!("/ppt/media/{name}"), img.data.clone());
+                }
+                pkg.part_rels.insert(part.clone(), rels);
+                pkg.set_part(part, slide.to_xml());
             }
 
-            // Media path: re-author the slide and rebuild its media rels, keeping
-            // the original layout link.
-            let layout_target = pkg
-                .get_part_rels(part)
-                .and_then(|r| r.get_by_type(rel_types::SLIDE_LAYOUT))
-                .map(|r| r.target.clone());
-            let mut rels = zavora_slide_opc::Relationships::new();
-            if let Some(t) = &layout_target {
-                rels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, t);
+            // Chart parts (Part B): write chart XML + embedded workbook + rels.
+            if !slide.charts.is_empty() {
+                crate::chart::write_chart_parts(&mut pkg, part, &slide.charts);
             }
-            let stem = part.rsplit('/').next().unwrap_or("slide").trim_end_matches(".xml");
-            if let Some(crate::slide::Fill::Picture { data, ext }) = &slide.background {
-                rels.add_with_id(crate::slide::BG_EMBED_RID, rel_types::IMAGE, &format!("../media/bg_{stem}.{ext}"));
-                let ct_ext = if ext == "jpg" { "jpeg" } else { ext.as_str() };
-                pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
-                pkg.set_part(&format!("/ppt/media/bg_{stem}.{ext}"), data.clone());
+
+            // Surgical notes DOM path: serialize the edited notes part in place.
+            if let (Some(notes_dom), Some(notes_part)) = (&slide.notes_dom, &slide.notes_part) {
+                pkg.set_part(notes_part, notes_dom.to_bytes());
             }
-            for img in &slide.images {
-                let name = format!("img_{stem}_{}.{}", img.id, img.ext);
-                rels.add_with_id(&img.embed_rid, rel_types::IMAGE, &format!("../media/{name}"));
-                let ct_ext = if img.ext == "jpg" { "jpeg" } else { img.ext.as_str() };
-                pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
-                pkg.set_part(&format!("/ppt/media/{name}"), img.data.clone());
-            }
-            pkg.part_rels.insert(part.clone(), rels);
-            pkg.set_part(part, slide.to_xml());
         }
 
         if self.reordered {
@@ -582,7 +684,9 @@ impl Presentation {
         pkg.set_part("/ppt/presProps.xml", template::PRES_PROPS_XML.as_bytes().to_vec());
         pkg.set_part("/ppt/viewProps.xml", template::VIEW_PROPS_XML.as_bytes().to_vec());
         pkg.set_part("/ppt/tableStyles.xml", template::TABLE_STYLES_XML.as_bytes().to_vec());
-        pkg.set_part("/docProps/core.xml", template::CORE_XML.as_bytes().to_vec());
+        pkg.set_part("/docProps/core.xml", crate::core_properties::build_core_xml(
+            self.pending_core_props.as_ref().unwrap_or(&Default::default()),
+        ));
         pkg.set_part("/docProps/app.xml", template::APP_XML.as_bytes().to_vec());
 
         // Package-level rels add docProps (presentation is already rId1 here).
@@ -675,6 +779,10 @@ impl Presentation {
                 nrels.add_with_id("rId1", template::RT_NOTES_MASTER, "../notesMasters/notesMaster1.xml");
                 nrels.add_with_id("rId2", template::RT_SLIDE, &format!("../slides/slide{}.xml", idx + 1));
             }
+            // Chart parts (Part B): chart XML + embedded workbook + rels + content types.
+            if !slide.charts.is_empty() {
+                crate::chart::write_chart_parts(&mut pkg, &part, &slide.charts);
+            }
         }
 
         // Shared notes master (theme-linked) when any slide has notes.
@@ -743,6 +851,20 @@ fn blank_slide_xml() -> Vec<u8> {
     )
     .as_bytes()
     .to_vec()
+}
+
+/// Normalize a part path by resolving `..` segments.
+/// E.g. `/ppt/slides/../notesSlides/notesSlide1.xml` → `/ppt/notesSlides/notesSlide1.xml`.
+fn normalize_part_path(path: &str) -> String {
+    let mut segments: Vec<&str> = Vec::new();
+    for seg in path.split('/') {
+        if seg == ".." {
+            segments.pop();
+        } else if seg != "." {
+            segments.push(seg);
+        }
+    }
+    segments.join("/")
 }
 
 #[cfg(test)]

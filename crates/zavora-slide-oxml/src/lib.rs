@@ -7,14 +7,18 @@
 
 mod error;
 pub mod drawing;
+pub mod notes_dom;
 pub mod presentation;
 mod raw_part;
+pub mod scheme_color;
 pub mod slide_dom;
 pub mod xml;
 
 pub use drawing::{Align, Paragraph, Placeholder, Run, RunProps, Shape, TextBody};
 pub use error::{OxmlError, Result};
+pub use notes_dom::NotesDom;
 pub use presentation::{Presentation, SlideIdEntry, SlideSize};
 pub use raw_part::RawPart;
-pub use slide_dom::{RunFormat, SlideDom};
+pub use scheme_color::SchemeColor;
+pub use slide_dom::{AutoFit, BulletKind, ClickAction, ColorSpec, ConnectorAnchor, ConnectorType, FillSpec, FreeformPath, LineSpec, RunFormat, ShapeInfo, SlideDom, SpacingValue};
 pub use xml::{Document, Element, Node};

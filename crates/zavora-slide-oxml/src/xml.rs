@@ -124,6 +124,101 @@ impl Element {
         }
     }
 
+    // ─── DOM mutation toolkit ───────────────────────────────────────────
+
+    /// Insert a child node at `index`. If `index >= len`, appends.
+    /// Converts a self-closing element to open/close so children can exist.
+    pub fn insert_child_at(&mut self, index: usize, node: Node) {
+        if self.self_closing {
+            self.self_closing = false;
+            self.dirty = true;
+        }
+        let len = self.children.len();
+        if index >= len {
+            self.children.push(node);
+        } else {
+            self.children.insert(index, node);
+        }
+    }
+
+    /// Remove all children for which `predicate` returns `true`.
+    /// Returns the removed nodes. If all children are removed and the element
+    /// was not self-closing, it remains open (empty content).
+    pub fn remove_children_where<F>(&mut self, predicate: F) -> Vec<Node>
+    where
+        F: Fn(&Node) -> bool,
+    {
+        let mut removed = Vec::new();
+        let mut i = 0;
+        while i < self.children.len() {
+            if predicate(&self.children[i]) {
+                removed.push(self.children.remove(i));
+            } else {
+                i += 1;
+            }
+        }
+        removed
+    }
+
+    /// Replace the child at `index` with `node`. Returns the old child.
+    /// Panics if `index` is out of bounds.
+    pub fn replace_child(&mut self, index: usize, node: Node) -> Node {
+        assert!(
+            index < self.children.len(),
+            "replace_child: index {} out of bounds (len {})",
+            index,
+            self.children.len()
+        );
+        std::mem::replace(&mut self.children[index], node)
+    }
+
+    /// Insert a child element in schema-valid order according to the
+    /// `child_order` table for this element's local name. If the element's
+    /// local name has no ordering table, or the child's local name is not in
+    /// the table, the child is appended.
+    ///
+    /// The ordering is determined by looking up the child's local name in the
+    /// table for this parent. The child is inserted after the last existing
+    /// sibling whose order rank is ≤ the new child's rank.
+    pub fn insert_child_ordered(&mut self, node: Node) {
+        if self.self_closing {
+            self.self_closing = false;
+            self.dirty = true;
+        }
+
+        let child_local = match &node {
+            Node::Element(e) => e.local_name().to_vec(),
+            _ => {
+                self.children.push(node);
+                return;
+            }
+        };
+
+        let parent_local = self.local_name().to_vec();
+        let table = match child_order_table(&parent_local) {
+            Some(t) => t,
+            None => {
+                self.children.push(node);
+                return;
+            }
+        };
+
+        let child_rank = rank_of(&child_local, table);
+
+        // Find the insertion point: after the last sibling with rank <= child_rank.
+        let mut insert_pos = 0;
+        for (i, existing) in self.children.iter().enumerate() {
+            if let Node::Element(e) = existing {
+                let existing_rank = rank_of(e.local_name(), table);
+                if existing_rank <= child_rank {
+                    insert_pos = i + 1;
+                }
+            }
+        }
+
+        self.children.insert(insert_pos, node);
+    }
+
     fn write(&self, out: &mut Vec<u8>) {
         if self.dirty {
             out.push(b'<');
@@ -160,6 +255,102 @@ impl Element {
             out.extend_from_slice(&self.raw_end);
         }
     }
+}
+
+// ─── Child-order tables (ECMA-376 schema-valid ordering) ────────────────────
+
+/// Schema-valid child ordering for `a:rPr` (CT_TextCharacterProperties).
+/// Children must appear in this order per ECMA-376 §21.1.2.3.9.
+const RPR_ORDER: &[&[u8]] = &[
+    b"ln",        // a:ln
+    b"noFill",    // a:noFill
+    b"solidFill", // a:solidFill
+    b"gradFill",  // a:gradFill
+    b"blipFill",  // a:blipFill
+    b"pattFill",  // a:pattFill
+    b"grpFill",   // a:grpFill
+    b"effectLst", // a:effectLst
+    b"effectDag", // a:effectDag
+    b"highlight", // a:highlight
+    b"uLnTx",    // a:uLnTx
+    b"uLn",      // a:uLn
+    b"uFillTx",  // a:uFillTx
+    b"uFill",    // a:uFill
+    b"latin",    // a:latin
+    b"ea",       // a:ea
+    b"cs",       // a:cs
+    b"sym",      // a:sym
+    b"hlinkClick", // a:hlinkClick
+    b"hlinkMouseOver", // a:hlinkMouseOver
+    b"rtl",      // a:rtl
+    b"extLst",   // a:extLst
+];
+
+/// Schema-valid child ordering for `a:pPr` (CT_TextParagraphProperties).
+/// Children must appear in this order per ECMA-376 §21.1.2.2.7.
+const PPR_ORDER: &[&[u8]] = &[
+    b"lnSpc",    // a:lnSpc
+    b"spcBef",   // a:spcBef
+    b"spcAft",   // a:spcAft
+    b"buClrTx",  // a:buClrTx
+    b"buClr",    // a:buClr
+    b"buSzTx",   // a:buSzTx
+    b"buSzPct",  // a:buSzPct
+    b"buSzPts",  // a:buSzPts
+    b"buFontTx", // a:buFontTx
+    b"buFont",   // a:buFont
+    b"buNone",   // a:buNone
+    b"buAutoNum", // a:buAutoNum
+    b"buChar",   // a:buChar
+    b"buBlip",   // a:buBlip
+    b"tabLst",   // a:tabLst
+    b"defRPr",   // a:defRPr
+    b"extLst",   // a:extLst
+];
+
+/// Schema-valid child ordering for `p:spPr` / `a:spPr` (CT_ShapeProperties).
+/// Children must appear in this order per ECMA-376 §19.3.1.44 / §21.1.2.1.1.
+const SPPR_ORDER: &[&[u8]] = &[
+    b"xfrm",     // a:xfrm
+    b"custGeom",  // a:custGeom
+    b"prstGeom",  // a:prstGeom
+    b"noFill",    // a:noFill
+    b"solidFill", // a:solidFill
+    b"gradFill",  // a:gradFill
+    b"blipFill",  // a:blipFill
+    b"pattFill",  // a:pattFill
+    b"grpFill",   // a:grpFill
+    b"ln",        // a:ln
+    b"effectLst", // a:effectLst
+    b"effectDag", // a:effectDag
+    b"scene3d",   // a:scene3d
+    b"sp3d",      // a:sp3d
+    b"extLst",    // a:extLst
+];
+
+/// Schema-valid child ordering for `p:txBody` / `a:txBody` (CT_TextBody).
+/// Children must appear in this order per ECMA-376 §21.1.2.1.1.
+const TXBODY_ORDER: &[&[u8]] = &[
+    b"bodyPr",   // a:bodyPr
+    b"lstStyle", // a:lstStyle
+    b"p",        // a:p (repeating)
+];
+
+/// Look up the child-order table for a given parent local name.
+fn child_order_table(parent_local: &[u8]) -> Option<&'static [&'static [u8]]> {
+    match parent_local {
+        b"rPr" => Some(RPR_ORDER),
+        b"pPr" => Some(PPR_ORDER),
+        b"spPr" => Some(SPPR_ORDER),
+        b"txBody" => Some(TXBODY_ORDER),
+        _ => None,
+    }
+}
+
+/// Return the rank (position) of a child local name in the order table.
+/// Unknown names get a rank past the end (appended).
+fn rank_of(local: &[u8], table: &[&[u8]]) -> usize {
+    table.iter().position(|&entry| entry == local).unwrap_or(table.len())
 }
 
 /// A parsed XML document: a sequence of top-level nodes (declaration, root
@@ -386,5 +577,300 @@ mod tests {
         let out = doc.to_bytes();
         assert!(out.windows(11).any(|w| w == br#"<b x="1">ke"#.as_slice() || w == br#"<b x="1">keep"#[..11].as_ref()));
         assert_eq!(out, br#"<a><b x="1">keep</b><c>edit</c></a>"#);
+    }
+
+    // ─── DOM mutation toolkit tests ─────────────────────────────────────
+
+    #[test]
+    fn insert_child_at_beginning() {
+        let mut doc = Document::parse(b"<a><b/><c/></a>").unwrap();
+        let new_node = Node::Element(Element {
+            name: b"z".to_vec(),
+            raw_start: b"<z/>".to_vec(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: false,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        doc.root_mut().unwrap().insert_child_at(0, new_node);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert!(s.contains("<a><z/><b/><c/></a>"), "got {s}");
+    }
+
+    #[test]
+    fn insert_child_at_middle() {
+        let mut doc = Document::parse(b"<a><b/><c/></a>").unwrap();
+        let new_node = Node::Element(Element {
+            name: b"z".to_vec(),
+            raw_start: b"<z/>".to_vec(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: false,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        doc.root_mut().unwrap().insert_child_at(1, new_node);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert!(s.contains("<a><b/><z/><c/></a>"), "got {s}");
+    }
+
+    #[test]
+    fn insert_child_at_end_when_index_exceeds_len() {
+        let mut doc = Document::parse(b"<a><b/></a>").unwrap();
+        let new_node = Node::Element(Element {
+            name: b"z".to_vec(),
+            raw_start: b"<z/>".to_vec(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: false,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        doc.root_mut().unwrap().insert_child_at(999, new_node);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert!(s.contains("<a><b/><z/></a>"), "got {s}");
+    }
+
+    #[test]
+    fn insert_child_at_opens_self_closing() {
+        let mut doc = Document::parse(b"<a/>").unwrap();
+        let new_node = Node::Element(Element {
+            name: b"b".to_vec(),
+            raw_start: b"<b/>".to_vec(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: false,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        doc.root_mut().unwrap().insert_child_at(0, new_node);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert_eq!(s, "<a><b/></a>");
+    }
+
+    #[test]
+    fn remove_children_where_removes_matching() {
+        let mut doc = Document::parse(b"<a><b/><c/><b/><d/></a>").unwrap();
+        let removed = doc.root_mut().unwrap().remove_children_where(|n| {
+            matches!(n, Node::Element(e) if e.local_name() == b"b")
+        });
+        assert_eq!(removed.len(), 2);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert_eq!(s, "<a><c/><d/></a>");
+    }
+
+    #[test]
+    fn remove_children_where_no_match() {
+        let mut doc = Document::parse(b"<a><b/><c/></a>").unwrap();
+        let removed = doc.root_mut().unwrap().remove_children_where(|n| {
+            matches!(n, Node::Element(e) if e.local_name() == b"z")
+        });
+        assert_eq!(removed.len(), 0);
+        // Unchanged
+        assert_eq!(doc.to_bytes(), b"<a><b/><c/></a>");
+    }
+
+    #[test]
+    fn replace_child_swaps_node() {
+        let mut doc = Document::parse(b"<a><b/><c/><d/></a>").unwrap();
+        let new_node = Node::Element(Element {
+            name: b"z".to_vec(),
+            raw_start: b"<z/>".to_vec(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: false,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        let old = doc.root_mut().unwrap().replace_child(1, new_node);
+        // Old node was <c/>
+        if let Node::Element(e) = old {
+            assert_eq!(e.local_name(), b"c");
+        } else {
+            panic!("expected element");
+        }
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert_eq!(s, "<a><b/><z/><d/></a>");
+    }
+
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn replace_child_panics_on_out_of_bounds() {
+        let mut doc = Document::parse(b"<a><b/></a>").unwrap();
+        let new_node = Node::Element(Element {
+            name: b"z".to_vec(),
+            raw_start: b"<z/>".to_vec(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: false,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        doc.root_mut().unwrap().replace_child(5, new_node);
+    }
+
+    #[test]
+    fn insert_child_ordered_rpr_latin_before_hlinkclick() {
+        // a:rPr with hlinkClick already present; inserting latin should go before it.
+        let src = br#"<a:rPr><a:solidFill/><a:hlinkClick r:id="rId1"/></a:rPr>"#;
+        let mut doc = Document::parse(src).unwrap();
+        let rpr = doc.root_mut().unwrap();
+        let latin = Node::Element(Element {
+            name: b"a:latin".to_vec(),
+            raw_start: Vec::new(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: true,
+            attrs: vec![(b"typeface".to_vec(), b"Arial".to_vec())],
+            children: Vec::new(),
+        });
+        rpr.insert_child_ordered(latin);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        // latin (rank 14) should be after solidFill (rank 2) and before hlinkClick (rank 18)
+        let latin_pos = s.find("a:latin").unwrap();
+        let solid_pos = s.find("a:solidFill").unwrap();
+        let hlink_pos = s.find("a:hlinkClick").unwrap();
+        assert!(solid_pos < latin_pos, "solidFill before latin: {s}");
+        assert!(latin_pos < hlink_pos, "latin before hlinkClick: {s}");
+    }
+
+    #[test]
+    fn insert_child_ordered_ppr_spcbef_before_buchar() {
+        // a:pPr with buChar; inserting spcBef should go before it.
+        let src = b"<a:pPr><a:buChar char=\"-\"/></a:pPr>";
+        let mut doc = Document::parse(src).unwrap();
+        let ppr = doc.root_mut().unwrap();
+        let spc_bef = Node::Element(Element {
+            name: b"a:spcBef".to_vec(),
+            raw_start: Vec::new(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: true,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        ppr.insert_child_ordered(spc_bef);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        let spc_pos = s.find("a:spcBef").unwrap();
+        let bu_pos = s.find("a:buChar").unwrap();
+        assert!(spc_pos < bu_pos, "spcBef before buChar: {s}");
+    }
+
+    #[test]
+    fn insert_child_ordered_sppr_solidfill_after_xfrm() {
+        // p:spPr with xfrm; inserting solidFill should go after xfrm.
+        let src = b"<p:spPr><a:xfrm/></p:spPr>";
+        let mut doc = Document::parse(src).unwrap();
+        let sppr = doc.root_mut().unwrap();
+        let fill = Node::Element(Element {
+            name: b"a:solidFill".to_vec(),
+            raw_start: Vec::new(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: true,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        sppr.insert_child_ordered(fill);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        let xfrm_pos = s.find("a:xfrm").unwrap();
+        let fill_pos = s.find("a:solidFill").unwrap();
+        assert!(xfrm_pos < fill_pos, "xfrm before solidFill: {s}");
+    }
+
+    #[test]
+    fn insert_child_ordered_txbody_p_after_bodypr() {
+        // p:txBody with bodyPr; inserting p should go after bodyPr.
+        let src = b"<p:txBody><a:bodyPr/></p:txBody>";
+        let mut doc = Document::parse(src).unwrap();
+        let txbody = doc.root_mut().unwrap();
+        let p = Node::Element(Element {
+            name: b"a:p".to_vec(),
+            raw_start: Vec::new(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: true,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        txbody.insert_child_ordered(p);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        let body_pos = s.find("a:bodyPr").unwrap();
+        let p_pos = s.find("a:p").unwrap();
+        assert!(body_pos < p_pos, "bodyPr before p: {s}");
+    }
+
+    #[test]
+    fn insert_child_ordered_unknown_parent_appends() {
+        // An element with no ordering table just appends.
+        let src = b"<foo><bar/></foo>";
+        let mut doc = Document::parse(src).unwrap();
+        let foo = doc.root_mut().unwrap();
+        let baz = Node::Element(Element {
+            name: b"baz".to_vec(),
+            raw_start: b"<baz/>".to_vec(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: false,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        foo.insert_child_ordered(baz);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert_eq!(s, "<foo><bar/><baz/></foo>");
+    }
+
+    #[test]
+    fn insert_child_ordered_unknown_child_appends() {
+        // A child not in the table for a known parent appends.
+        let src = b"<a:rPr><a:solidFill/></a:rPr>";
+        let mut doc = Document::parse(src).unwrap();
+        let rpr = doc.root_mut().unwrap();
+        let unknown = Node::Element(Element {
+            name: b"a:unknownExt".to_vec(),
+            raw_start: Vec::new(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: true,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        rpr.insert_child_ordered(unknown);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        // Unknown goes after all known elements (appended)
+        assert!(s.ends_with("a:unknownExt/></a:rPr>"), "got {s}");
+    }
+
+    #[test]
+    fn insert_child_ordered_opens_self_closing_parent() {
+        let mut doc = Document::parse(b"<a:pPr/>").unwrap();
+        let ppr = doc.root_mut().unwrap();
+        let spc = Node::Element(Element {
+            name: b"a:spcBef".to_vec(),
+            raw_start: Vec::new(),
+            raw_end: Vec::new(),
+            self_closing: true,
+            dirty: true,
+            attrs: Vec::new(),
+            children: Vec::new(),
+        });
+        ppr.insert_child_ordered(spc);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert!(s.contains("a:spcBef"), "got {s}");
+        assert!(s.starts_with("<a:pPr>"), "should open: {s}");
+        assert!(s.ends_with("</a:pPr>"), "should close: {s}");
+    }
+
+    #[test]
+    fn insert_child_ordered_raw_node_appends() {
+        // Raw (non-element) nodes are always appended.
+        let src = b"<a:rPr><a:solidFill/></a:rPr>";
+        let mut doc = Document::parse(src).unwrap();
+        let rpr = doc.root_mut().unwrap();
+        let raw = Node::Raw(b"<!-- comment -->".to_vec());
+        rpr.insert_child_ordered(raw);
+        let s = String::from_utf8(doc.to_bytes()).unwrap();
+        assert!(s.ends_with("<!-- comment --></a:rPr>"), "got {s}");
     }
 }
