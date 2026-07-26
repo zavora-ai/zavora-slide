@@ -12,9 +12,18 @@ use crate::error::Result;
 /// Default namespace declarations for `<p:presentation>`.
 pub fn default_root_attrs() -> Vec<(String, String)> {
     [
-        ("xmlns:a", "http://schemas.openxmlformats.org/drawingml/2006/main"),
-        ("xmlns:r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships"),
-        ("xmlns:p", "http://schemas.openxmlformats.org/presentationml/2006/main"),
+        (
+            "xmlns:a",
+            "http://schemas.openxmlformats.org/drawingml/2006/main",
+        ),
+        (
+            "xmlns:r",
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+        ),
+        (
+            "xmlns:p",
+            "http://schemas.openxmlformats.org/presentationml/2006/main",
+        ),
     ]
     .iter()
     .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -39,12 +48,20 @@ pub struct SlideSize {
 impl SlideSize {
     /// 16:9 widescreen (default in modern PowerPoint).
     pub fn widescreen() -> Self {
-        Self { cx: 12192000, cy: 6858000, ty: Some("screen16x9".into()) }
+        Self {
+            cx: 12192000,
+            cy: 6858000,
+            ty: Some("screen16x9".into()),
+        }
     }
 
     /// Default notes-page size: 7.5"×10" portrait (required `<p:notesSz>`).
     pub fn notes_default() -> Self {
-        Self { cx: 6858000, cy: 9144000, ty: None }
+        Self {
+            cx: 6858000,
+            cy: 9144000,
+            ty: None,
+        }
     }
 }
 
@@ -83,7 +100,11 @@ impl Presentation {
             root_attrs: Vec::new(),
             master_ids: Vec::new(),
             slide_ids: Vec::new(),
-            slide_size: SlideSize { cx: 0, cy: 0, ty: None },
+            slide_size: SlideSize {
+                cx: 0,
+                cy: 0,
+                ty: None,
+            },
             notes_size: SlideSize::notes_default(),
             extra_children: Vec::new(),
         };
@@ -94,7 +115,9 @@ impl Presentation {
                     pres.root_attrs = collect_attrs(&e)?;
                 }
                 Event::Start(e) => match local(e.name().as_ref()) {
-                    b"sldMasterIdLst" => pres.master_ids = parse_id_list(&mut reader, b"sldMasterId")?,
+                    b"sldMasterIdLst" => {
+                        pres.master_ids = parse_id_list(&mut reader, b"sldMasterId")?
+                    }
                     b"sldIdLst" => pres.slide_ids = parse_id_list(&mut reader, b"sldId")?,
                     _ => pres.extra_children.push(capture_subtree(&mut reader, &e)?),
                 },
@@ -122,7 +145,11 @@ impl Presentation {
 
     pub fn to_xml(&self) -> Result<Vec<u8>> {
         let mut w = Writer::new(Vec::new());
-        w.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), Some("yes"))))?;
+        w.write_event(Event::Decl(BytesDecl::new(
+            "1.0",
+            Some("UTF-8"),
+            Some("yes"),
+        )))?;
 
         let mut root = BytesStart::new("p:presentation");
         for (k, v) in &self.root_attrs {
@@ -130,7 +157,12 @@ impl Presentation {
         }
         w.write_event(Event::Start(root))?;
 
-        write_id_list(&mut w, "p:sldMasterIdLst", "p:sldMasterId", &self.master_ids)?;
+        write_id_list(
+            &mut w,
+            "p:sldMasterIdLst",
+            "p:sldMasterId",
+            &self.master_ids,
+        )?;
         write_id_list(&mut w, "p:sldIdLst", "p:sldId", &self.slide_ids)?;
 
         let mut sz = BytesStart::new("p:sldSz");

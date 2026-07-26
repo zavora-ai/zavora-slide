@@ -5,8 +5,8 @@
 //! `TextBody::from_xml` additionally extracts paragraph text + level, which
 //! powers both the round-trip test here and slide text extraction (task 3.3).
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 use crate::error::Result;
 
@@ -107,10 +107,17 @@ pub struct Run {
 
 impl Run {
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into(), props: RunProps::default() }
+        Self {
+            text: text.into(),
+            props: RunProps::default(),
+        }
     }
     fn to_xml(&self) -> String {
-        format!("<a:r>{}<a:t>{}</a:t></a:r>", self.props.to_xml(), esc(&self.text))
+        format!(
+            "<a:r>{}<a:t>{}</a:t></a:r>",
+            self.props.to_xml(),
+            esc(&self.text)
+        )
     }
 }
 
@@ -141,7 +148,11 @@ impl Paragraph {
         if let Some(al) = self.align {
             attrs.push_str(&format!(" algn=\"{}\"", al.attr()));
         }
-        let children = if self.bullet == Some(false) { "<a:buNone/>" } else { "" };
+        let children = if self.bullet == Some(false) {
+            "<a:buNone/>"
+        } else {
+            ""
+        };
         let ppr = if attrs.is_empty() && children.is_empty() {
             String::new()
         } else if children.is_empty() {
@@ -259,7 +270,10 @@ fn read_rpr(e: &quick_xml::events::BytesStart) -> Result<RunProps> {
             b"i" => rp.italic = Some(&*attr.value == b"1"),
             b"u" => rp.underline = Some(&*attr.value != b"none"),
             b"sz" => {
-                rp.size_pt = std::str::from_utf8(&attr.value)?.parse::<f64>().ok().map(|v| v / 100.0)
+                rp.size_pt = std::str::from_utf8(&attr.value)?
+                    .parse::<f64>()
+                    .ok()
+                    .map(|v| v / 100.0)
             }
             _ => {}
         }
@@ -294,11 +308,20 @@ pub struct Shape {
 
 impl Shape {
     /// Build a placeholder shape (e.g. title or body).
-    pub fn placeholder(id: u32, name: &str, ph_type: &str, idx: Option<u32>, body: TextBody) -> Self {
+    pub fn placeholder(
+        id: u32,
+        name: &str,
+        ph_type: &str,
+        idx: Option<u32>,
+        body: TextBody,
+    ) -> Self {
         Self {
             id,
             name: name.to_string(),
-            placeholder: Some(Placeholder { ph_type: ph_type.to_string(), idx }),
+            placeholder: Some(Placeholder {
+                ph_type: ph_type.to_string(),
+                idx,
+            }),
             xfrm: None,
             text_box: false,
             geom: "rect".to_string(),
@@ -346,7 +369,10 @@ impl Shape {
 
     /// Set an outline color (hex) and width in points.
     pub fn set_outline(&mut self, hex: &str, width_pt: f64) -> &mut Self {
-        self.line = Some((hex.trim_start_matches('#').to_uppercase(), (width_pt * 12700.0) as i64));
+        self.line = Some((
+            hex.trim_start_matches('#').to_uppercase(),
+            (width_pt * 12700.0) as i64,
+        ));
         self
     }
 
@@ -392,7 +418,10 @@ impl Shape {
         let nv_pr = match &self.placeholder {
             Some(ph) => {
                 let idx = ph.idx.map(|i| format!(" idx=\"{i}\"")).unwrap_or_default();
-                format!("<p:nvPr><p:ph type=\"{}\"{idx}/></p:nvPr>", esc(&ph.ph_type))
+                format!(
+                    "<p:nvPr><p:ph type=\"{}\"{idx}/></p:nvPr>",
+                    esc(&ph.ph_type)
+                )
             }
             None => "<p:nvPr/>".to_string(),
         };
@@ -438,7 +467,12 @@ mod tests {
 
     #[test]
     fn run_props_serialize() {
-        let rp = RunProps { bold: Some(true), size_pt: Some(18.0), color: Some("FF0000".into()), ..Default::default() };
+        let rp = RunProps {
+            bold: Some(true),
+            size_pt: Some(18.0),
+            color: Some("FF0000".into()),
+            ..Default::default()
+        };
         let xml = rp.to_xml();
         assert!(xml.contains("b=\"1\""));
         assert!(xml.contains("sz=\"1800\""));
@@ -456,7 +490,14 @@ mod tests {
         let body = TextBody {
             paragraphs: vec![
                 Paragraph {
-                    runs: vec![Run { text: "Hello".into(), props: RunProps { bold: Some(true), size_pt: Some(24.0), ..Default::default() } }],
+                    runs: vec![Run {
+                        text: "Hello".into(),
+                        props: RunProps {
+                            bold: Some(true),
+                            size_pt: Some(24.0),
+                            ..Default::default()
+                        },
+                    }],
                     align: Some(Align::Center),
                     ..Default::default()
                 },
@@ -488,7 +529,18 @@ mod tests {
 
     #[test]
     fn placeholder_and_textbox_shapes() {
-        let title = Shape::placeholder(2, "Title 1", "title", None, TextBody { paragraphs: vec![Paragraph { runs: vec![Run::new("T")], ..Default::default() }] });
+        let title = Shape::placeholder(
+            2,
+            "Title 1",
+            "title",
+            None,
+            TextBody {
+                paragraphs: vec![Paragraph {
+                    runs: vec![Run::new("T")],
+                    ..Default::default()
+                }],
+            },
+        );
         let tx = title.to_xml();
         assert!(tx.contains("<p:ph type=\"title\"/>"));
         assert!(tx.contains("<a:t>T</a:t>"));

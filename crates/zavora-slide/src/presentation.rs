@@ -37,7 +37,10 @@ impl Presentation {
     /// Create a blank 16:9 deck: one master, one layout, one theme, zero slides.
     pub fn new() -> Self {
         let mut pres = PresXml::new();
-        pres.master_ids.push(SlideIdEntry { id: 2147483648, r_id: "rId1".into() });
+        pres.master_ids.push(SlideIdEntry {
+            id: 2147483648,
+            r_id: "rId1".into(),
+        });
         Self {
             pres,
             master: RawPart::from_xml(template::SLIDE_MASTER_XML.as_bytes()),
@@ -67,7 +70,9 @@ impl Presentation {
 
     /// Open from in-memory `.pptx` bytes (see [`Presentation::open`]).
     pub fn open_from_bytes(bytes: &[u8]) -> Result<Self> {
-        Self::open_from_package(OpcPackage::from_reader(std::io::Cursor::new(bytes.to_vec()))?)
+        Self::open_from_package(OpcPackage::from_reader(std::io::Cursor::new(
+            bytes.to_vec(),
+        ))?)
     }
 
     fn open_from_package(pkg: OpcPackage) -> Result<Self> {
@@ -107,7 +112,11 @@ impl Presentation {
                             })
                             .collect();
                         let (cx, cy) = (p.pres.slide_size.cx, p.pres.slide_size.cy);
-                        let mut slide = Slide { data: &mut data, slide_cx: cx, slide_cy: cy };
+                        let mut slide = Slide {
+                            data: &mut data,
+                            slide_cx: cx,
+                            slide_cy: cy,
+                        };
                         slide.sync_build_bullets_public(&bullets);
                     }
 
@@ -115,9 +124,10 @@ impl Presentation {
                     if let Some(slide_rels) = pkg.get_part_rels(part_path)
                         && let Some(notes_rel) = slide_rels.get_by_type(rel_types::NOTES_SLIDE)
                     {
-                        let notes_path = normalize_part_path(
-                            &OpcPackage::resolve_rel_target(part_path, &notes_rel.target)
-                        );
+                        let notes_path = normalize_part_path(&OpcPackage::resolve_rel_target(
+                            part_path,
+                            &notes_rel.target,
+                        ));
                         if let Some(notes_bytes) = pkg.get_part(&notes_path)
                             && let Ok(notes_dom) = zavora_slide_oxml::NotesDom::parse(notes_bytes)
                         {
@@ -165,7 +175,9 @@ impl Presentation {
     /// Apply a theme (color scheme + fonts) to the deck.
     pub fn apply_theme(&mut self, theme: &crate::theme::ThemeSpec) {
         self.invalidate_source();
-        self.theme = RawPart { xml: theme.build_theme_xml() };
+        self.theme = RawPart {
+            xml: theme.build_theme_xml(),
+        };
     }
 
     /// Read core document properties from `docProps/core.xml`.
@@ -207,7 +219,10 @@ impl Presentation {
     fn resync_slide_ids(&mut self) {
         self.invalidate_source();
         self.pres.slide_ids = (0..self.slides.len())
-            .map(|i| SlideIdEntry { id: 256 + i as u32, r_id: format!("rId{}", i + 2) })
+            .map(|i| SlideIdEntry {
+                id: 256 + i as u32,
+                r_id: format!("rId{}", i + 2),
+            })
             .collect();
     }
 
@@ -269,8 +284,11 @@ impl Presentation {
 
     /// A slide part path not already used by any slide (e.g. /ppt/slides/slideN.xml).
     fn fresh_slide_part_path(&self) -> String {
-        let used: std::collections::HashSet<&str> =
-            self.slides.iter().filter_map(|s| s.source_part.as_deref()).collect();
+        let used: std::collections::HashSet<&str> = self
+            .slides
+            .iter()
+            .filter_map(|s| s.source_part.as_deref())
+            .collect();
         (1..)
             .map(|n| format!("/ppt/slides/slide{n}.xml"))
             .find(|p| !used.contains(p.as_str()))
@@ -280,7 +298,12 @@ impl Presentation {
     /// A numeric sldId greater than any in use (ids must be unique; PowerPoint
     /// uses values >= 256).
     fn fresh_sld_id(&self) -> u32 {
-        self.slides.iter().filter_map(|s| s.sld_id.as_ref().map(|(id, _)| *id)).max().unwrap_or(255) + 1
+        self.slides
+            .iter()
+            .filter_map(|s| s.sld_id.as_ref().map(|(id, _)| *id))
+            .max()
+            .unwrap_or(255)
+            + 1
     }
 
     /// Remove the slide at `idx`. On a source-backed deck this is faithful: the
@@ -300,7 +323,10 @@ impl Presentation {
     pub fn move_slide(&mut self, from: usize, to: usize) -> Result<()> {
         let n = self.slides.len();
         if from >= n || to >= n {
-            return Err(SlideError::NotFound(format!("slide index {}", from.max(to))));
+            return Err(SlideError::NotFound(format!(
+                "slide index {}",
+                from.max(to)
+            )));
         }
         let s = self.slides.remove(from);
         self.slides.insert(to, s);
@@ -324,7 +350,10 @@ impl Presentation {
     /// Resync only the build-model `sldIdLst` (used by the rebuild path).
     fn resync_build_ids_only(&mut self) {
         self.pres.slide_ids = (0..self.slides.len())
-            .map(|i| SlideIdEntry { id: 256 + i as u32, r_id: format!("rId{}", i + 2) })
+            .map(|i| SlideIdEntry {
+                id: 256 + i as u32,
+                r_id: format!("rId{}", i + 2),
+            })
             .collect();
     }
 
@@ -339,7 +368,11 @@ impl Presentation {
         let (cx, cy) = (self.pres.slide_size.cx, self.pres.slide_size.cy);
         let data = &mut self.slides[idx];
         data.dirty = true;
-        Ok(Slide { data, slide_cx: cx, slide_cy: cy })
+        Ok(Slide {
+            data,
+            slide_cx: cx,
+            slide_cy: cy,
+        })
     }
 
     /// Read-only borrow of a slide (does not invalidate the source package).
@@ -349,7 +382,11 @@ impl Presentation {
             .slides
             .get(idx)
             .ok_or_else(|| SlideError::NotFound(format!("slide index {idx}")))?;
-        Ok(crate::slide::SlideRef { data, slide_cx: cx, slide_cy: cy })
+        Ok(crate::slide::SlideRef {
+            data,
+            slide_cx: cx,
+            slide_cy: cy,
+        })
     }
 
     /// Test/inspection helper: a slide's source part path and current DOM bytes,
@@ -396,7 +433,8 @@ impl Presentation {
             .iter()
             .map(|s| s.to_scene(self.pres.slide_size.cx, self.pres.slide_size.cy))
             .collect();
-        zavora_slide_pdf::scenes_to_pdf(&scenes).map_err(|e| SlideError::Unsupported(format!("pdf: {e}")))
+        zavora_slide_pdf::scenes_to_pdf(&scenes)
+            .map_err(|e| SlideError::Unsupported(format!("pdf: {e}")))
     }
 
     /// Save the whole deck as a PDF (one page per slide).
@@ -434,9 +472,7 @@ impl Presentation {
         update: &crate::chart::ChartDataUpdate,
     ) -> Result<()> {
         let pkg = self.source.as_mut().ok_or_else(|| {
-            SlideError::Unsupported(
-                "update_chart_data requires a deck opened from a file".into(),
-            )
+            SlideError::Unsupported("update_chart_data requires a deck opened from a file".into())
         })?;
 
         let slide_part = self
@@ -486,17 +522,26 @@ impl Presentation {
     /// source, a structural change cleared it, or an edited slide gained notes
     /// (injecting a notesMaster into a foreign deck risks a repair prompt).
     fn overlay_package(&self) -> Result<Option<OpcPackage>> {
-        let Some(src) = &self.source else { return Ok(None) };
+        let Some(src) = &self.source else {
+            return Ok(None);
+        };
         // Only fall back to full rebuild if a dirty slide has notes but NO
         // notes_dom (i.e. it's a brand-new notes part that needs a notesMaster
         // injected — which risks a repair prompt on foreign decks).
-        if self.slides.iter().any(|s| s.dirty && s.notes.is_some() && s.notes_dom.is_none()) {
+        if self
+            .slides
+            .iter()
+            .any(|s| s.dirty && s.notes.is_some() && s.notes_dom.is_none())
+        {
             return Ok(None);
         }
         let mut pkg = src.clone();
         for slide in self.slides.iter().filter(|s| s.dirty) {
-            let Some(part) = &slide.source_part else { continue };
-            let has_new_media = slide.background.is_some() || !slide.images.is_empty() || !slide.charts.is_empty();
+            let Some(part) = &slide.source_part else {
+                continue;
+            };
+            let has_new_media =
+                slide.background.is_some() || !slide.images.is_empty() || !slide.charts.is_empty();
 
             // Surgical DOM path: serialize the mutated tree, leave rels untouched.
             if let (Some(dom), false) = (&slide.dom, has_new_media) {
@@ -512,18 +557,36 @@ impl Presentation {
                 if let Some(t) = &layout_target {
                     rels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, t);
                 }
-                let stem = part.rsplit('/').next().unwrap_or("slide").trim_end_matches(".xml");
+                let stem = part
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("slide")
+                    .trim_end_matches(".xml");
                 if let Some(crate::slide::Fill::Picture { data, ext }) = &slide.background {
-                    rels.add_with_id(crate::slide::BG_EMBED_RID, rel_types::IMAGE, &format!("../media/bg_{stem}.{ext}"));
+                    rels.add_with_id(
+                        crate::slide::BG_EMBED_RID,
+                        rel_types::IMAGE,
+                        &format!("../media/bg_{stem}.{ext}"),
+                    );
                     let ct_ext = if ext == "jpg" { "jpeg" } else { ext.as_str() };
-                    pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                    pkg.content_types
+                        .add_default(ct_ext, &format!("image/{ct_ext}"));
                     pkg.set_part(&format!("/ppt/media/bg_{stem}.{ext}"), data.clone());
                 }
                 for img in &slide.images {
                     let name = format!("img_{stem}_{}.{}", img.id, img.ext);
-                    rels.add_with_id(&img.embed_rid, rel_types::IMAGE, &format!("../media/{name}"));
-                    let ct_ext = if img.ext == "jpg" { "jpeg" } else { img.ext.as_str() };
-                    pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                    rels.add_with_id(
+                        &img.embed_rid,
+                        rel_types::IMAGE,
+                        &format!("../media/{name}"),
+                    );
+                    let ct_ext = if img.ext == "jpg" {
+                        "jpeg"
+                    } else {
+                        img.ext.as_str()
+                    };
+                    pkg.content_types
+                        .add_default(ct_ext, &format!("image/{ct_ext}"));
                     pkg.set_part(&format!("/ppt/media/{name}"), img.data.clone());
                 }
                 pkg.part_rels.insert(part.clone(), rels);
@@ -571,7 +634,10 @@ impl Presentation {
         let mut eff_rids: Vec<String> = Vec::with_capacity(self.slides.len());
         for s in &self.slides {
             if let Some(orig_part) = &s.clone_rels_from {
-                let new_part = s.source_part.as_ref().expect("duplicated slide has a part path");
+                let new_part = s
+                    .source_part
+                    .as_ref()
+                    .expect("duplicated slide has a part path");
                 let rid = format!("rId{next_rid}");
                 next_rid += 1;
                 // New slide part bytes from the cloned DOM.
@@ -595,11 +661,18 @@ impl Presentation {
                 // Bind to an existing layout of the requested type (fallback: any).
                 let layout = find_layout_by_type(pkg, lt)
                     .or_else(|| find_layout_by_type(pkg, ""))
-                    .ok_or_else(|| SlideError::Unsupported("deck has no slide layout to bind".into()))?;
-                let bytes = s.dom.as_ref().map(|d| d.to_bytes()).unwrap_or_else(blank_slide_xml);
+                    .ok_or_else(|| {
+                        SlideError::Unsupported("deck has no slide layout to bind".into())
+                    })?;
+                let bytes = s
+                    .dom
+                    .as_ref()
+                    .map(|d| d.to_bytes())
+                    .unwrap_or_else(blank_slide_xml);
                 pkg.set_part(new_part, bytes);
                 pkg.content_types.add_override(new_part, template::CT_SLIDE);
-                let layout_target = format!("../slideLayouts/{}", layout.rsplit('/').next().unwrap());
+                let layout_target =
+                    format!("../slideLayouts/{}", layout.rsplit('/').next().unwrap());
                 let mut srels = zavora_slide_opc::Relationships::new();
                 srels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, &layout_target);
                 pkg.part_rels.insert(new_part.clone(), srels);
@@ -608,14 +681,21 @@ impl Presentation {
                     .add_with_id(&rid, rel_types::SLIDE, target);
                 eff_rids.push(rid);
             } else {
-                eff_rids.push(s.sld_id.as_ref().expect("reorder requires sld_id").1.clone());
+                eff_rids.push(
+                    s.sld_id
+                        .as_ref()
+                        .expect("reorder requires sld_id")
+                        .1
+                        .clone(),
+                );
             }
         }
 
         let pres_xml = pkg
             .get_part("/ppt/presentation.xml")
             .ok_or_else(|| SlideError::NotFound("presentation.xml".into()))?;
-        let mut doc = Document::parse(pres_xml).map_err(|e| SlideError::Unsupported(e.to_string()))?;
+        let mut doc =
+            Document::parse(pres_xml).map_err(|e| SlideError::Unsupported(e.to_string()))?;
 
         // Build the new <p:sldId> children from current slides, in order.
         let mut new_ids: Vec<Node> = Vec::new();
@@ -624,8 +704,13 @@ impl Presentation {
             let id = s.sld_id.as_ref().expect("reorder requires sld_id").0;
             kept_rids.insert(rid.clone());
             let xml = format!("<p:sldId id=\"{id}\" r:id=\"{rid}\"/>");
-            let frag = Document::parse(xml.as_bytes()).map_err(|e| SlideError::Unsupported(e.to_string()))?;
-            new_ids.extend(frag.nodes.into_iter().filter(|n| matches!(n, Node::Element(_))));
+            let frag = Document::parse(xml.as_bytes())
+                .map_err(|e| SlideError::Unsupported(e.to_string()))?;
+            new_ids.extend(
+                frag.nodes
+                    .into_iter()
+                    .filter(|n| matches!(n, Node::Element(_))),
+            );
         }
 
         // Replace the sldIdLst's children in place (preserving the list element).
@@ -639,15 +724,19 @@ impl Presentation {
         // Drop presentation→slide rels not referenced by the new sldIdLst.
         if let Some(rels) = pkg.part_rels.get_mut("/ppt/presentation.xml") {
             let before = rels.items.len();
-            rels.items.retain(|r| r.rel_type != rel_types::SLIDE || kept_rids.contains(&r.id));
+            rels.items
+                .retain(|r| r.rel_type != rel_types::SLIDE || kept_rids.contains(&r.id));
             if rels.items.len() != before {
                 rels.touch();
             }
         }
 
         // Prune slide parts (and rels/content-type) no longer referenced.
-        let kept: std::collections::HashSet<&str> =
-            self.slides.iter().filter_map(|s| s.source_part.as_deref()).collect();
+        let kept: std::collections::HashSet<&str> = self
+            .slides
+            .iter()
+            .filter_map(|s| s.source_part.as_deref())
+            .collect();
         let all_slide_parts: Vec<String> = pkg
             .part_names()
             .filter(|n| n.starts_with("/ppt/slides/slide") && n.ends_with(".xml"))
@@ -667,8 +756,14 @@ impl Presentation {
     fn build_package(&self) -> Result<OpcPackage> {
         let mut pkg = OpcPackage::new_pptx();
         let ct = &mut pkg.content_types;
-        ct.add_override("/ppt/slideMasters/slideMaster1.xml", template::CT_SLIDE_MASTER);
-        ct.add_override("/ppt/slideLayouts/slideLayout1.xml", template::CT_SLIDE_LAYOUT);
+        ct.add_override(
+            "/ppt/slideMasters/slideMaster1.xml",
+            template::CT_SLIDE_MASTER,
+        );
+        ct.add_override(
+            "/ppt/slideLayouts/slideLayout1.xml",
+            template::CT_SLIDE_LAYOUT,
+        );
         ct.add_override("/ppt/theme/theme1.xml", template::CT_THEME);
         ct.add_override("/ppt/presProps.xml", template::CT_PRES_PROPS);
         ct.add_override("/ppt/viewProps.xml", template::CT_VIEW_PROPS);
@@ -681,23 +776,43 @@ impl Presentation {
         pkg.set_part("/ppt/slideMasters/slideMaster1.xml", self.master.to_xml());
         pkg.set_part("/ppt/slideLayouts/slideLayout1.xml", self.layout.to_xml());
         pkg.set_part("/ppt/theme/theme1.xml", self.theme.to_xml());
-        pkg.set_part("/ppt/presProps.xml", template::PRES_PROPS_XML.as_bytes().to_vec());
-        pkg.set_part("/ppt/viewProps.xml", template::VIEW_PROPS_XML.as_bytes().to_vec());
-        pkg.set_part("/ppt/tableStyles.xml", template::TABLE_STYLES_XML.as_bytes().to_vec());
-        pkg.set_part("/docProps/core.xml", crate::core_properties::build_core_xml(
-            self.pending_core_props.as_ref().unwrap_or(&Default::default()),
-        ));
+        pkg.set_part(
+            "/ppt/presProps.xml",
+            template::PRES_PROPS_XML.as_bytes().to_vec(),
+        );
+        pkg.set_part(
+            "/ppt/viewProps.xml",
+            template::VIEW_PROPS_XML.as_bytes().to_vec(),
+        );
+        pkg.set_part(
+            "/ppt/tableStyles.xml",
+            template::TABLE_STYLES_XML.as_bytes().to_vec(),
+        );
+        pkg.set_part(
+            "/docProps/core.xml",
+            crate::core_properties::build_core_xml(
+                self.pending_core_props
+                    .as_ref()
+                    .unwrap_or(&Default::default()),
+            ),
+        );
         pkg.set_part("/docProps/app.xml", template::APP_XML.as_bytes().to_vec());
 
         // Package-level rels add docProps (presentation is already rId1 here).
-        pkg.package_rels.add_if_absent(template::RT_CORE, "docProps/core.xml");
-        pkg.package_rels.add_if_absent(template::RT_EXTENDED, "docProps/app.xml");
+        pkg.package_rels
+            .add_if_absent(template::RT_CORE, "docProps/core.xml");
+        pkg.package_rels
+            .add_if_absent(template::RT_EXTENDED, "docProps/app.xml");
 
         // presentation.xml rels: master (rId1), slides (rId2..), then aux parts.
         {
             let aux = self.slides.len() + 2;
             let rels = pkg.get_or_create_part_rels("/ppt/presentation.xml");
-            rels.add_with_id("rId1", rel_types::SLIDE_MASTER, "slideMasters/slideMaster1.xml");
+            rels.add_with_id(
+                "rId1",
+                rel_types::SLIDE_MASTER,
+                "slideMasters/slideMaster1.xml",
+            );
             for idx in 0..self.slides.len() {
                 rels.add_with_id(
                     &format!("rId{}", idx + 2),
@@ -705,23 +820,47 @@ impl Presentation {
                     &format!("slides/slide{}.xml", idx + 1),
                 );
             }
-            rels.add_with_id(&format!("rId{aux}"), template::RT_PRES_PROPS, "presProps.xml");
-            rels.add_with_id(&format!("rId{}", aux + 1), template::RT_VIEW_PROPS, "viewProps.xml");
-            rels.add_with_id(&format!("rId{}", aux + 2), rel_types::THEME, "theme/theme1.xml");
-            rels.add_with_id(&format!("rId{}", aux + 3), template::RT_TABLE_STYLES, "tableStyles.xml");
+            rels.add_with_id(
+                &format!("rId{aux}"),
+                template::RT_PRES_PROPS,
+                "presProps.xml",
+            );
+            rels.add_with_id(
+                &format!("rId{}", aux + 1),
+                template::RT_VIEW_PROPS,
+                "viewProps.xml",
+            );
+            rels.add_with_id(
+                &format!("rId{}", aux + 2),
+                rel_types::THEME,
+                "theme/theme1.xml",
+            );
+            rels.add_with_id(
+                &format!("rId{}", aux + 3),
+                template::RT_TABLE_STYLES,
+                "tableStyles.xml",
+            );
         }
 
         // Master → layout (rId1) + theme (rId2).
         {
             let rels = pkg.get_or_create_part_rels("/ppt/slideMasters/slideMaster1.xml");
-            rels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, "../slideLayouts/slideLayout1.xml");
+            rels.add_with_id(
+                "rId1",
+                rel_types::SLIDE_LAYOUT,
+                "../slideLayouts/slideLayout1.xml",
+            );
             rels.add_with_id("rId2", rel_types::THEME, "../theme/theme1.xml");
         }
 
         // Layout → master (rId1).
         {
             let rels = pkg.get_or_create_part_rels("/ppt/slideLayouts/slideLayout1.xml");
-            rels.add_with_id("rId1", rel_types::SLIDE_MASTER, "../slideMasters/slideMaster1.xml");
+            rels.add_with_id(
+                "rId1",
+                rel_types::SLIDE_MASTER,
+                "../slideMasters/slideMaster1.xml",
+            );
         }
 
         // Each slide part + its layout rel (+ notes rel when present).
@@ -732,7 +871,11 @@ impl Presentation {
             pkg.set_part(&part, slide.to_xml());
             {
                 let rels = pkg.get_or_create_part_rels(&part);
-                rels.add_with_id("rId1", rel_types::SLIDE_LAYOUT, "../slideLayouts/slideLayout1.xml");
+                rels.add_with_id(
+                    "rId1",
+                    rel_types::SLIDE_LAYOUT,
+                    "../slideLayouts/slideLayout1.xml",
+                );
                 if slide.notes.is_some() {
                     rels.add_with_id(
                         "rId2",
@@ -758,13 +901,19 @@ impl Presentation {
             // Background picture media part (default content type for png/jpeg).
             if let Some(crate::slide::Fill::Picture { data, ext }) = &slide.background {
                 let ct_ext = if ext == "jpg" { "jpeg" } else { ext.as_str() };
-                pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                pkg.content_types
+                    .add_default(ct_ext, &format!("image/{ct_ext}"));
                 pkg.set_part(&format!("/ppt/media/bg{}.{}", idx + 1, ext), data.clone());
             }
             // Image media parts (default content types for png/jpeg).
             for img in &slide.images {
-                let ct_ext = if img.ext == "jpg" { "jpeg" } else { img.ext.as_str() };
-                pkg.content_types.add_default(ct_ext, &format!("image/{ct_ext}"));
+                let ct_ext = if img.ext == "jpg" {
+                    "jpeg"
+                } else {
+                    img.ext.as_str()
+                };
+                pkg.content_types
+                    .add_default(ct_ext, &format!("image/{ct_ext}"));
                 pkg.set_part(
                     &format!("/ppt/media/image{}_{}.{}", idx + 1, img.id, img.ext),
                     img.data.clone(),
@@ -773,11 +922,20 @@ impl Presentation {
             // notesSlide part: links to the notes master and back to its slide.
             if let Some(notes) = &slide.notes {
                 let np = format!("/ppt/notesSlides/notesSlide{}.xml", idx + 1);
-                pkg.content_types.add_override(&np, template::CT_NOTES_SLIDE);
+                pkg.content_types
+                    .add_override(&np, template::CT_NOTES_SLIDE);
                 pkg.set_part(&np, crate::slide::notes_slide_xml(notes));
                 let nrels = pkg.get_or_create_part_rels(&np);
-                nrels.add_with_id("rId1", template::RT_NOTES_MASTER, "../notesMasters/notesMaster1.xml");
-                nrels.add_with_id("rId2", template::RT_SLIDE, &format!("../slides/slide{}.xml", idx + 1));
+                nrels.add_with_id(
+                    "rId1",
+                    template::RT_NOTES_MASTER,
+                    "../notesMasters/notesMaster1.xml",
+                );
+                nrels.add_with_id(
+                    "rId2",
+                    template::RT_SLIDE,
+                    &format!("../slides/slide{}.xml", idx + 1),
+                );
             }
             // Chart parts (Part B): chart XML + embedded workbook + rels + content types.
             if !slide.charts.is_empty() {
@@ -787,8 +945,14 @@ impl Presentation {
 
         // Shared notes master (theme-linked) when any slide has notes.
         if has_notes {
-            pkg.content_types.add_override("/ppt/notesMasters/notesMaster1.xml", template::CT_NOTES_MASTER);
-            pkg.set_part("/ppt/notesMasters/notesMaster1.xml", template::NOTES_MASTER_XML.as_bytes().to_vec());
+            pkg.content_types.add_override(
+                "/ppt/notesMasters/notesMaster1.xml",
+                template::CT_NOTES_MASTER,
+            );
+            pkg.set_part(
+                "/ppt/notesMasters/notesMaster1.xml",
+                template::NOTES_MASTER_XML.as_bytes().to_vec(),
+            );
             pkg.get_or_create_part_rels("/ppt/notesMasters/notesMaster1.xml")
                 .add_with_id("rId1", rel_types::THEME, "../theme/theme1.xml");
         }
@@ -830,7 +994,10 @@ fn find_layout_by_type(pkg: &OpcPackage, ty: &str) -> Option<String> {
             return Some(part.to_string());
         }
         if let Some(i) = s.find("<p:sldLayout")
-            && s[i..].split('>').next().is_some_and(|tag| tag.contains(&format!("type=\"{ty}\"")))
+            && s[i..]
+                .split('>')
+                .next()
+                .is_some_and(|tag| tag.contains(&format!("type=\"{ty}\"")))
         {
             return Some(part.to_string());
         }
@@ -925,7 +1092,10 @@ mod tests {
         let bytes = p.save_to_buffer().unwrap();
         // Re-open via the OPC layer and assert required parts exist.
         let pkg = OpcPackage::from_reader(std::io::Cursor::new(bytes)).unwrap();
-        assert_eq!(pkg.main_presentation_part().as_deref(), Some("/ppt/presentation.xml"));
+        assert_eq!(
+            pkg.main_presentation_part().as_deref(),
+            Some("/ppt/presentation.xml")
+        );
         assert!(pkg.get_part("/ppt/slideMasters/slideMaster1.xml").is_some());
         assert!(pkg.get_part("/ppt/slideLayouts/slideLayout1.xml").is_some());
         assert!(pkg.get_part("/ppt/theme/theme1.xml").is_some());

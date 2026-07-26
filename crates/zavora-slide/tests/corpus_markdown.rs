@@ -6,7 +6,7 @@
 //!
 //! Requirements: 25.2, 26.5
 
-use zavora_slide::{to_markdown, to_outline, Presentation};
+use zavora_slide::{Presentation, to_markdown, to_outline};
 
 const SAMPLE: &str = "tests/corpus/powerpoint_sample.pptx";
 
@@ -14,7 +14,10 @@ const SAMPLE: &str = "tests/corpus/powerpoint_sample.pptx";
 fn corpus_markdown_is_non_empty() {
     let p = Presentation::open(SAMPLE).unwrap();
     let md = to_markdown(&p);
-    assert!(!md.is_empty(), "markdown extraction should produce non-empty output");
+    assert!(
+        !md.is_empty(),
+        "markdown extraction should produce non-empty output"
+    );
     // Should have at least some meaningful content length
     assert!(
         md.len() > 50,
@@ -114,7 +117,10 @@ fn corpus_markdown_tables_as_markdown_tables() {
     if has_tables {
         // Markdown tables use | separators
         assert!(md.contains("|"), "tables should use pipe separators");
-        assert!(md.contains("---"), "tables should have header separator row");
+        assert!(
+            md.contains("---"),
+            "tables should have header separator row"
+        );
     }
 }
 

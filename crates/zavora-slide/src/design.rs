@@ -234,9 +234,8 @@ pub fn apply_design_theme(
     palette_id: &str,
     font_pairing_id: &str,
 ) -> Result<()> {
-    let palette = palette_by_id(palette_id).ok_or_else(|| {
-        SlideError::NotFound(format!("palette not found: '{palette_id}'"))
-    })?;
+    let palette = palette_by_id(palette_id)
+        .ok_or_else(|| SlideError::NotFound(format!("palette not found: '{palette_id}'")))?;
     let pairing = font_pairing_by_id(font_pairing_id).ok_or_else(|| {
         SlideError::NotFound(format!("font pairing not found: '{font_pairing_id}'"))
     })?;
@@ -254,7 +253,8 @@ pub fn apply_design_theme(
     spec.colors.insert("accent6".into(), palette.accent6.into());
     // Use accent1 as hyperlink color, accent4 as followed hyperlink.
     spec.colors.insert("hlink".into(), palette.accent1.into());
-    spec.colors.insert("folHlink".into(), palette.accent4.into());
+    spec.colors
+        .insert("folHlink".into(), palette.accent4.into());
 
     // Map font pairing onto theme fonts.
     spec.heading_font = Some(pairing.heading.into());
@@ -408,11 +408,7 @@ struct LayoutCtx {
 }
 
 /// Emit a two-column layout: optional title at top, two text columns below.
-fn emit_two_column(
-    slide: &mut crate::slide::Slide<'_>,
-    params: &PatternParams,
-    ctx: &LayoutCtx,
-) {
+fn emit_two_column(slide: &mut crate::slide::Slide<'_>, params: &PatternParams, ctx: &LayoutCtx) {
     use crate::units::Emu;
     use zavora_slide_oxml::Align;
 
@@ -421,8 +417,18 @@ fn emit_two_column(
     // Title (if provided)
     if let Some(title) = &params.title {
         let title_h = Emu::points(ctx.title_size).0 * 2; // ~2 lines height
-        let sp = slide.add_text_box(title, Emu(ctx.margin_x), Emu(y_cursor), Emu(ctx.content_w), Emu(title_h));
-        sp.size(ctx.title_size).font(&ctx.heading_font).color(&ctx.title_color).bold(true).align(Align::Left);
+        let sp = slide.add_text_box(
+            title,
+            Emu(ctx.margin_x),
+            Emu(y_cursor),
+            Emu(ctx.content_w),
+            Emu(title_h),
+        );
+        sp.size(ctx.title_size)
+            .font(&ctx.heading_font)
+            .color(&ctx.title_color)
+            .bold(true)
+            .align(Align::Left);
         y_cursor += title_h + ctx.margin_y / 2;
     }
 
@@ -435,26 +441,46 @@ fn emit_two_column(
     let left_items: Vec<&str> = params.items.iter().step_by(2).map(|s| s.as_str()).collect();
     let left_text = left_items.join("\n");
     if !left_text.is_empty() {
-        let sp = slide.add_text_box(&left_text, Emu(ctx.margin_x), Emu(y_cursor), Emu(col_w), Emu(col_h));
-        sp.size(ctx.body_size).font(&ctx.body_font).color(&ctx.body_color).align(Align::Left);
+        let sp = slide.add_text_box(
+            &left_text,
+            Emu(ctx.margin_x),
+            Emu(y_cursor),
+            Emu(col_w),
+            Emu(col_h),
+        );
+        sp.size(ctx.body_size)
+            .font(&ctx.body_font)
+            .color(&ctx.body_color)
+            .align(Align::Left);
     }
 
     // Right column: odd-indexed items
-    let right_items: Vec<&str> = params.items.iter().skip(1).step_by(2).map(|s| s.as_str()).collect();
+    let right_items: Vec<&str> = params
+        .items
+        .iter()
+        .skip(1)
+        .step_by(2)
+        .map(|s| s.as_str())
+        .collect();
     let right_text = right_items.join("\n");
     if !right_text.is_empty() {
         let right_x = ctx.margin_x + col_w + gap;
-        let sp = slide.add_text_box(&right_text, Emu(right_x), Emu(y_cursor), Emu(col_w), Emu(col_h));
-        sp.size(ctx.body_size).font(&ctx.body_font).color(&ctx.body_color).align(Align::Left);
+        let sp = slide.add_text_box(
+            &right_text,
+            Emu(right_x),
+            Emu(y_cursor),
+            Emu(col_w),
+            Emu(col_h),
+        );
+        sp.size(ctx.body_size)
+            .font(&ctx.body_font)
+            .color(&ctx.body_color)
+            .align(Align::Left);
     }
 }
 
 /// Emit icon-rows layout: title + rows of icon/label pairs.
-fn emit_icon_rows(
-    slide: &mut crate::slide::Slide<'_>,
-    params: &PatternParams,
-    ctx: &LayoutCtx,
-) {
+fn emit_icon_rows(slide: &mut crate::slide::Slide<'_>, params: &PatternParams, ctx: &LayoutCtx) {
     use crate::units::Emu;
     use zavora_slide_oxml::Align;
 
@@ -463,8 +489,18 @@ fn emit_icon_rows(
     // Title
     if let Some(title) = &params.title {
         let title_h = Emu::points(ctx.title_size).0 * 2;
-        let sp = slide.add_text_box(title, Emu(ctx.margin_x), Emu(y_cursor), Emu(ctx.content_w), Emu(title_h));
-        sp.size(ctx.title_size).font(&ctx.heading_font).color(&ctx.title_color).bold(true).align(Align::Left);
+        let sp = slide.add_text_box(
+            title,
+            Emu(ctx.margin_x),
+            Emu(y_cursor),
+            Emu(ctx.content_w),
+            Emu(title_h),
+        );
+        sp.size(ctx.title_size)
+            .font(&ctx.heading_font)
+            .color(&ctx.title_color)
+            .bold(true)
+            .align(Align::Left);
         y_cursor += title_h + ctx.margin_y / 2;
     }
 
@@ -484,22 +520,24 @@ fn emit_icon_rows(
         let icon_y = row_y + (row_h - icon_size) / 2;
         let sp = slide.add_shape(
             crate::units::ShapePreset::RoundRect,
-            Emu(ctx.margin_x), Emu(icon_y), Emu(icon_size), Emu(icon_size),
+            Emu(ctx.margin_x),
+            Emu(icon_y),
+            Emu(icon_size),
+            Emu(icon_size),
         );
         sp.set_fill(&ctx.accent_color);
 
         // Text beside the icon
         let sp = slide.add_text_box(item, Emu(text_x), Emu(row_y), Emu(text_w), Emu(row_h));
-        sp.size(ctx.body_size).font(&ctx.body_font).color(&ctx.body_color).align(Align::Left);
+        sp.size(ctx.body_size)
+            .font(&ctx.body_font)
+            .color(&ctx.body_color)
+            .align(Align::Left);
     }
 }
 
 /// Emit stat-callout layout: large stat number + supporting text.
-fn emit_stat_callout(
-    slide: &mut crate::slide::Slide<'_>,
-    params: &PatternParams,
-    ctx: &LayoutCtx,
-) {
+fn emit_stat_callout(slide: &mut crate::slide::Slide<'_>, params: &PatternParams, ctx: &LayoutCtx) {
     use crate::units::Emu;
     use zavora_slide_oxml::Align;
 
@@ -508,8 +546,18 @@ fn emit_stat_callout(
     // Title (if provided)
     if let Some(title) = &params.title {
         let title_h = Emu::points(ctx.title_size).0 * 2;
-        let sp = slide.add_text_box(title, Emu(ctx.margin_x), Emu(y_cursor), Emu(ctx.content_w), Emu(title_h));
-        sp.size(ctx.title_size).font(&ctx.heading_font).color(&ctx.title_color).bold(true).align(Align::Left);
+        let sp = slide.add_text_box(
+            title,
+            Emu(ctx.margin_x),
+            Emu(y_cursor),
+            Emu(ctx.content_w),
+            Emu(title_h),
+        );
+        sp.size(ctx.title_size)
+            .font(&ctx.heading_font)
+            .color(&ctx.title_color)
+            .bold(true)
+            .align(Align::Left);
         y_cursor += title_h + ctx.margin_y / 2;
     }
 
@@ -519,26 +567,41 @@ fn emit_stat_callout(
     let stat_text = params.items.first().map(|s| s.as_str()).unwrap_or("0");
     let stat_h = remaining_h * 60 / 100;
     let stat_size = 72.0; // Very large for the stat number
-    let sp = slide.add_text_box(stat_text, Emu(ctx.margin_x), Emu(y_cursor), Emu(ctx.content_w), Emu(stat_h));
+    let sp = slide.add_text_box(
+        stat_text,
+        Emu(ctx.margin_x),
+        Emu(y_cursor),
+        Emu(ctx.content_w),
+        Emu(stat_h),
+    );
     // Stat numbers are centered as a design element (not body text)
-    sp.size(stat_size).font(&ctx.heading_font).color(&ctx.accent_color).bold(true).align(Align::Center);
+    sp.size(stat_size)
+        .font(&ctx.heading_font)
+        .color(&ctx.accent_color)
+        .bold(true)
+        .align(Align::Center);
     y_cursor += stat_h;
 
     // Supporting text (left-aligned body)
     let support_text = params.items.get(1).map(|s| s.as_str()).unwrap_or("");
     if !support_text.is_empty() {
         let support_h = remaining_h - stat_h;
-        let sp = slide.add_text_box(support_text, Emu(ctx.margin_x), Emu(y_cursor), Emu(ctx.content_w), Emu(support_h));
-        sp.size(ctx.body_size).font(&ctx.body_font).color(&ctx.body_color).align(Align::Left);
+        let sp = slide.add_text_box(
+            support_text,
+            Emu(ctx.margin_x),
+            Emu(y_cursor),
+            Emu(ctx.content_w),
+            Emu(support_h),
+        );
+        sp.size(ctx.body_size)
+            .font(&ctx.body_font)
+            .color(&ctx.body_color)
+            .align(Align::Left);
     }
 }
 
 /// Emit quote layout: large quote text + attribution below.
-fn emit_quote(
-    slide: &mut crate::slide::Slide<'_>,
-    params: &PatternParams,
-    ctx: &LayoutCtx,
-) {
+fn emit_quote(slide: &mut crate::slide::Slide<'_>, params: &PatternParams, ctx: &LayoutCtx) {
     use crate::units::Emu;
     use zavora_slide_oxml::Align;
 
@@ -552,7 +615,13 @@ fn emit_quote(
 
     if !quote_text.is_empty() {
         let display_text = format!("\u{201C}{quote_text}\u{201D}");
-        let sp = slide.add_text_box(&display_text, Emu(quote_x), Emu(ctx.margin_y), Emu(quote_w), Emu(quote_h));
+        let sp = slide.add_text_box(
+            &display_text,
+            Emu(quote_x),
+            Emu(ctx.margin_y),
+            Emu(quote_w),
+            Emu(quote_h),
+        );
         sp.size(ctx.title_size * 0.8) // Slightly smaller than title but larger than body
             .font(&ctx.heading_font)
             .color(&ctx.title_color)
@@ -566,8 +635,17 @@ fn emit_quote(
         let attr_y = ctx.margin_y + quote_h + ctx.margin_y / 4;
         let attr_h = ctx.content_h - quote_h - ctx.margin_y / 4;
         let display_attr = format!("\u{2014} {attribution}");
-        let sp = slide.add_text_box(&display_attr, Emu(quote_x), Emu(attr_y), Emu(quote_w), Emu(attr_h));
-        sp.size(ctx.caption_size).font(&ctx.body_font).color(&ctx.body_color).align(Align::Left);
+        let sp = slide.add_text_box(
+            &display_attr,
+            Emu(quote_x),
+            Emu(attr_y),
+            Emu(quote_w),
+            Emu(attr_h),
+        );
+        sp.size(ctx.caption_size)
+            .font(&ctx.body_font)
+            .color(&ctx.body_color)
+            .align(Align::Left);
     }
 }
 
@@ -586,16 +664,35 @@ fn emit_section_divider(
     let title_h = ctx.content_h * 50 / 100;
     let title_y = ctx.margin_y + (ctx.content_h - title_h) / 3; // Upper third
 
-    let sp = slide.add_text_box(title_text, Emu(ctx.margin_x), Emu(title_y), Emu(ctx.content_w), Emu(title_h));
-    sp.size(section_title_size).font(&ctx.heading_font).color(&ctx.title_color).bold(true).align(Align::Left);
+    let sp = slide.add_text_box(
+        title_text,
+        Emu(ctx.margin_x),
+        Emu(title_y),
+        Emu(ctx.content_w),
+        Emu(title_h),
+    );
+    sp.size(section_title_size)
+        .font(&ctx.heading_font)
+        .color(&ctx.title_color)
+        .bold(true)
+        .align(Align::Left);
 
     // Subtitle (if provided as first item) — left-aligned body
     let subtitle = params.items.first().map(|s| s.as_str()).unwrap_or("");
     if !subtitle.is_empty() {
         let sub_y = title_y + title_h + ctx.margin_y / 4;
         let sub_h = ctx.content_h - (sub_y - ctx.margin_y);
-        let sp = slide.add_text_box(subtitle, Emu(ctx.margin_x), Emu(sub_y), Emu(ctx.content_w), Emu(sub_h));
-        sp.size(ctx.body_size).font(&ctx.body_font).color(&ctx.body_color).align(Align::Left);
+        let sp = slide.add_text_box(
+            subtitle,
+            Emu(ctx.margin_x),
+            Emu(sub_y),
+            Emu(ctx.content_w),
+            Emu(sub_h),
+        );
+        sp.size(ctx.body_size)
+            .font(&ctx.body_font)
+            .color(&ctx.body_color)
+            .align(Align::Left);
     }
 }
 
@@ -613,8 +710,18 @@ fn emit_image_caption(
     // Title (if provided)
     if let Some(title) = &params.title {
         let title_h = Emu::points(ctx.title_size).0 * 2;
-        let sp = slide.add_text_box(title, Emu(ctx.margin_x), Emu(y_cursor), Emu(ctx.content_w), Emu(title_h));
-        sp.size(ctx.title_size).font(&ctx.heading_font).color(&ctx.title_color).bold(true).align(Align::Left);
+        let sp = slide.add_text_box(
+            title,
+            Emu(ctx.margin_x),
+            Emu(y_cursor),
+            Emu(ctx.content_w),
+            Emu(title_h),
+        );
+        sp.size(ctx.title_size)
+            .font(&ctx.heading_font)
+            .color(&ctx.title_color)
+            .bold(true)
+            .align(Align::Left);
         y_cursor += title_h + ctx.margin_y / 2;
     }
 
@@ -624,7 +731,10 @@ fn emit_image_caption(
     let image_h = remaining_h * 75 / 100;
     let sp = slide.add_shape(
         crate::units::ShapePreset::Rect,
-        Emu(ctx.margin_x), Emu(y_cursor), Emu(ctx.content_w), Emu(image_h),
+        Emu(ctx.margin_x),
+        Emu(y_cursor),
+        Emu(ctx.content_w),
+        Emu(image_h),
     );
     sp.set_fill("F3F4F6"); // Light gray placeholder
     y_cursor += image_h + ctx.margin_y / 4;
@@ -633,8 +743,17 @@ fn emit_image_caption(
     let caption = params.items.first().map(|s| s.as_str()).unwrap_or("");
     if !caption.is_empty() {
         let caption_h = remaining_h - image_h - ctx.margin_y / 4;
-        let sp = slide.add_text_box(caption, Emu(ctx.margin_x), Emu(y_cursor), Emu(ctx.content_w), Emu(caption_h));
-        sp.size(ctx.caption_size).font(&ctx.body_font).color(&ctx.body_color).align(Align::Left);
+        let sp = slide.add_text_box(
+            caption,
+            Emu(ctx.margin_x),
+            Emu(y_cursor),
+            Emu(ctx.content_w),
+            Emu(caption_h),
+        );
+        sp.size(ctx.caption_size)
+            .font(&ctx.body_font)
+            .color(&ctx.body_color)
+            .align(Align::Left);
     }
 }
 
@@ -648,7 +767,11 @@ mod tests {
 
     #[test]
     fn catalog_has_expected_palette_count() {
-        assert!(palettes().len() >= 8, "Expected at least 8 palettes, got {}", palettes().len());
+        assert!(
+            palettes().len() >= 8,
+            "Expected at least 8 palettes, got {}",
+            palettes().len()
+        );
     }
 
     #[test]
@@ -731,7 +854,11 @@ mod tests {
         let mut ids: Vec<&str> = font_pairings().iter().map(|fp| fp.id).collect();
         ids.sort();
         ids.dedup();
-        assert_eq!(ids.len(), font_pairings().len(), "Font pairing ids must be unique");
+        assert_eq!(
+            ids.len(),
+            font_pairings().len(),
+            "Font pairing ids must be unique"
+        );
     }
 
     #[test]
@@ -794,12 +921,21 @@ mod tests {
     fn two_column_produces_shapes() {
         let params = PatternParams {
             title: Some("Two Columns".into()),
-            items: vec!["Left 1".into(), "Right 1".into(), "Left 2".into(), "Right 2".into()],
+            items: vec![
+                "Left 1".into(),
+                "Right 1".into(),
+                "Left 2".into(),
+                "Right 2".into(),
+            ],
             ..Default::default()
         };
         let shapes = apply_pattern_and_get_shapes(LayoutPattern::TwoColumn, &params);
         // Should have at least: title + left column + right column = 3 shapes
-        assert!(shapes.len() >= 3, "TwoColumn should produce at least 3 shapes, got {}", shapes.len());
+        assert!(
+            shapes.len() >= 3,
+            "TwoColumn should produce at least 3 shapes, got {}",
+            shapes.len()
+        );
     }
 
     #[test]
@@ -811,7 +947,11 @@ mod tests {
         };
         let shapes = apply_pattern_and_get_shapes(LayoutPattern::IconRows, &params);
         // Title + (icon shape + text) per item = 1 + 3*2 = 7
-        assert!(shapes.len() >= 4, "IconRows should produce shapes, got {}", shapes.len());
+        assert!(
+            shapes.len() >= 4,
+            "IconRows should produce shapes, got {}",
+            shapes.len()
+        );
     }
 
     #[test]
@@ -823,18 +963,29 @@ mod tests {
         };
         let shapes = apply_pattern_and_get_shapes(LayoutPattern::StatCallout, &params);
         // Title + stat + supporting text = 3
-        assert!(shapes.len() >= 3, "StatCallout should produce at least 3 shapes, got {}", shapes.len());
+        assert!(
+            shapes.len() >= 3,
+            "StatCallout should produce at least 3 shapes, got {}",
+            shapes.len()
+        );
     }
 
     #[test]
     fn quote_produces_shapes() {
         let params = PatternParams {
-            items: vec!["The best way to predict the future is to invent it.".into(), "Alan Kay".into()],
+            items: vec![
+                "The best way to predict the future is to invent it.".into(),
+                "Alan Kay".into(),
+            ],
             ..Default::default()
         };
         let shapes = apply_pattern_and_get_shapes(LayoutPattern::Quote, &params);
         // Quote text + attribution = 2
-        assert!(shapes.len() >= 2, "Quote should produce at least 2 shapes, got {}", shapes.len());
+        assert!(
+            shapes.len() >= 2,
+            "Quote should produce at least 2 shapes, got {}",
+            shapes.len()
+        );
     }
 
     #[test]
@@ -846,7 +997,11 @@ mod tests {
         };
         let shapes = apply_pattern_and_get_shapes(LayoutPattern::SectionDivider, &params);
         // Title + subtitle = 2
-        assert!(shapes.len() >= 2, "SectionDivider should produce at least 2 shapes, got {}", shapes.len());
+        assert!(
+            shapes.len() >= 2,
+            "SectionDivider should produce at least 2 shapes, got {}",
+            shapes.len()
+        );
     }
 
     #[test]
@@ -858,7 +1013,11 @@ mod tests {
         };
         let shapes = apply_pattern_and_get_shapes(LayoutPattern::ImageCaption, &params);
         // Title + image placeholder (shape) + caption = 3
-        assert!(shapes.len() >= 3, "ImageCaption should produce at least 3 shapes, got {}", shapes.len());
+        assert!(
+            shapes.len() >= 3,
+            "ImageCaption should produce at least 3 shapes, got {}",
+            shapes.len()
+        );
     }
 
     #[test]
@@ -955,8 +1114,16 @@ mod tests {
         }
 
         // Find the title (bold, largest) and body sizes
-        let title_size = sizes.iter().filter(|(_, bold)| *bold).map(|(s, _)| *s).fold(0.0_f64, f64::max);
-        let body_size = sizes.iter().filter(|(_, bold)| !*bold).map(|(s, _)| *s).fold(f64::MAX, f64::min);
+        let title_size = sizes
+            .iter()
+            .filter(|(_, bold)| *bold)
+            .map(|(s, _)| *s)
+            .fold(0.0_f64, f64::max);
+        let body_size = sizes
+            .iter()
+            .filter(|(_, bold)| !*bold)
+            .map(|(s, _)| *s)
+            .fold(f64::MAX, f64::min);
 
         if title_size > 0.0 && body_size < f64::MAX {
             assert!(
@@ -997,9 +1164,11 @@ mod tests {
             let data = &pres.slides_for_test()[0];
             for sp in &data.shapes {
                 // Skip shapes that are title-like (bold) or non-text
-                let is_title_shape = sp.body.paragraphs.iter().all(|p| {
-                    p.runs.iter().all(|r| r.props.bold == Some(true))
-                });
+                let is_title_shape = sp
+                    .body
+                    .paragraphs
+                    .iter()
+                    .all(|p| p.runs.iter().all(|r| r.props.bold == Some(true)));
                 if is_title_shape {
                     continue;
                 }
@@ -1039,20 +1208,23 @@ mod tests {
         let ocean = palette_by_id("ocean").unwrap();
         let has_palette_color = data.shapes.iter().any(|sp| {
             sp.body.paragraphs.iter().any(|p| {
-                p.runs.iter().any(|r| {
-                    r.props.color.as_deref() == Some(ocean.primary)
-                })
+                p.runs
+                    .iter()
+                    .any(|r| r.props.color.as_deref() == Some(ocean.primary))
             })
         });
-        assert!(has_palette_color, "Pattern should use the specified palette colors");
+        assert!(
+            has_palette_color,
+            "Pattern should use the specified palette colors"
+        );
 
         // Verify the elegant font pairing is used
         let elegant = font_pairing_by_id("elegant").unwrap();
         let has_font = data.shapes.iter().any(|sp| {
             sp.body.paragraphs.iter().any(|p| {
-                p.runs.iter().any(|r| {
-                    r.props.font.as_deref() == Some(elegant.heading)
-                })
+                p.runs
+                    .iter()
+                    .any(|r| r.props.font.as_deref() == Some(elegant.heading))
             })
         });
         assert!(has_font, "Pattern should use the specified font pairing");

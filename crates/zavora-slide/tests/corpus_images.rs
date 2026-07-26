@@ -308,7 +308,11 @@ fn corpus_insert_gif_format_accepted() {
 
     // Verify format detection works.
     let detected = ImageFormat::detect(&gif_data);
-    assert_eq!(detected, Some(ImageFormat::Gif), "GIF detected from magic bytes");
+    assert_eq!(
+        detected,
+        Some(ImageFormat::Gif),
+        "GIF detected from magic bytes"
+    );
 
     // Insert GIF into a deck.
     let mut p = Presentation::new();
@@ -322,7 +326,11 @@ fn corpus_insert_gif_format_accepted() {
             Emu::inches(3.0),
             Emu::inches(2.0),
         );
-        assert!(result.is_ok(), "GIF insertion should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "GIF insertion should succeed: {:?}",
+            result.err()
+        );
     }
 
     // Save and verify the deck is valid.

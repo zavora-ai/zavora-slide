@@ -10,7 +10,10 @@ use zavora_slide_oxml::{NotesDom, SlideDom};
 
 /// A notes-slide XML with existing notes text (as PowerPoint would emit).
 fn notes_xml_with_text(text: &str) -> Vec<u8> {
-    let esc = text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let esc = text
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n\
          <p:notes xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" \
@@ -37,7 +40,8 @@ fn notes_dom_set_and_read_text() {
     let mut dom = NotesDom::parse(&xml).unwrap();
     assert_eq!(dom.notes_text(), "Original speaker notes");
 
-    dom.set_notes_text("Updated notes for the audience").unwrap();
+    dom.set_notes_text("Updated notes for the audience")
+        .unwrap();
     assert_eq!(dom.notes_text(), "Updated notes for the audience");
 }
 
@@ -45,7 +49,8 @@ fn notes_dom_set_and_read_text() {
 fn notes_dom_multi_paragraph() {
     let xml = notes_xml_with_text("First line");
     let mut dom = NotesDom::parse(&xml).unwrap();
-    dom.set_notes_text("Point one\nPoint two\nPoint three").unwrap();
+    dom.set_notes_text("Point one\nPoint two\nPoint three")
+        .unwrap();
     assert_eq!(dom.notes_text(), "Point one\nPoint two\nPoint three");
 }
 
@@ -253,8 +258,14 @@ fn notes_edit_uses_dom_path_not_rebuild() {
 
     // Verify the notes_dom was parsed.
     let slides = p2.slides_for_test();
-    assert!(slides[0].has_notes_dom(), "notes_dom should be parsed on open");
-    assert!(slides[0].has_notes_part(), "notes_part should be set on open");
+    assert!(
+        slides[0].has_notes_dom(),
+        "notes_dom should be parsed on open"
+    );
+    assert!(
+        slides[0].has_notes_part(),
+        "notes_part should be set on open"
+    );
 
     // Edit notes — should use the DOM path.
     {
@@ -264,5 +275,8 @@ fn notes_edit_uses_dom_path_not_rebuild() {
 
     // Verify the notes_dom was updated.
     let slides = p2.slides_for_test();
-    assert_eq!(slides[0].notes_dom_text(), Some("Edited via DOM".to_string()));
+    assert_eq!(
+        slides[0].notes_dom_text(),
+        Some("Edited via DOM".to_string())
+    );
 }

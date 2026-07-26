@@ -27,8 +27,8 @@ pub const SIMILARITY_THRESHOLD: f64 = 0.5;
 ///
 /// Panics if either PNG cannot be decoded.
 pub fn compare_pngs(our_png: &[u8], reference_png: &[u8]) -> f64 {
-    let our_pixmap = resvg::tiny_skia::Pixmap::decode_png(our_png)
-        .expect("failed to decode our PNG");
+    let our_pixmap =
+        resvg::tiny_skia::Pixmap::decode_png(our_png).expect("failed to decode our PNG");
     let ref_pixmap = resvg::tiny_skia::Pixmap::decode_png(reference_png)
         .expect("failed to decode reference PNG");
 
@@ -94,7 +94,10 @@ pub fn compare_pngs(our_png: &[u8], reference_png: &[u8]) -> f64 {
 /// - `None` if the env gate is not set (test should be skipped).
 /// - `Some(Ok(png_bytes))` on success.
 /// - `Some(Err(message))` on failure.
-pub fn render_with_libreoffice(pptx_bytes: &[u8], slide_index: usize) -> Option<Result<Vec<u8>, String>> {
+pub fn render_with_libreoffice(
+    pptx_bytes: &[u8],
+    slide_index: usize,
+) -> Option<Result<Vec<u8>, String>> {
     let gate = std::env::var("ZAVORA_LIBREOFFICE_GATE").unwrap_or_default();
     if gate != "1" {
         return None;
@@ -109,26 +112,18 @@ fn render_with_libreoffice_inner(pptx_bytes: &[u8], slide_index: usize) -> Resul
 
     // Write pptx to a temp file.
     let tmp_dir = std::env::temp_dir().join("zavora_similarity_gate");
-    fs::create_dir_all(&tmp_dir)
-        .map_err(|e| format!("failed to create temp dir: {e}"))?;
+    fs::create_dir_all(&tmp_dir).map_err(|e| format!("failed to create temp dir: {e}"))?;
 
     let pptx_path = tmp_dir.join("test_deck.pptx");
-    fs::write(&pptx_path, pptx_bytes)
-        .map_err(|e| format!("failed to write temp pptx: {e}"))?;
+    fs::write(&pptx_path, pptx_bytes).map_err(|e| format!("failed to write temp pptx: {e}"))?;
 
     let out_dir = tmp_dir.join("png_output");
-    fs::create_dir_all(&out_dir)
-        .map_err(|e| format!("failed to create output dir: {e}"))?;
+    fs::create_dir_all(&out_dir).map_err(|e| format!("failed to create output dir: {e}"))?;
 
     // Run LibreOffice headless to convert to PNG.
     // LibreOffice exports one PNG per slide when converting from pptx.
     let result = Command::new("libreoffice")
-        .args([
-            "--headless",
-            "--convert-to",
-            "png",
-            "--outdir",
-        ])
+        .args(["--headless", "--convert-to", "png", "--outdir"])
         .arg(&out_dir)
         .arg(&pptx_path)
         .output();
@@ -145,7 +140,10 @@ fn render_with_libreoffice_inner(pptx_bytes: &[u8], slide_index: usize) -> Resul
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let _ = fs::remove_dir_all(&tmp_dir);
-        return Err(format!("libreoffice exited with {}: {}", output.status, stderr));
+        return Err(format!(
+            "libreoffice exited with {}: {}",
+            output.status, stderr
+        ));
     }
 
     // LibreOffice produces a single PNG named after the input file (e.g. test_deck.png)
@@ -169,9 +167,7 @@ fn render_with_libreoffice_inner(pptx_bytes: &[u8], slide_index: usize) -> Resul
         let mut candidates: Vec<_> = fs::read_dir(&out_dir)
             .map_err(|e| format!("failed to read output dir: {e}"))?
             .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                entry.path().extension().is_some_and(|ext| ext == "png")
-            })
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "png"))
             .collect();
 
         candidates.sort_by_key(|e| e.file_name());
@@ -188,8 +184,7 @@ fn render_with_libreoffice_inner(pptx_bytes: &[u8], slide_index: usize) -> Resul
             )
         })?;
 
-        fs::read(target.path())
-            .map_err(|e| format!("failed to read output PNG: {e}"))?
+        fs::read(target.path()).map_err(|e| format!("failed to read output PNG: {e}"))?
     };
 
     // Clean up.

@@ -5,8 +5,8 @@
 //! Writes `~/Downloads/zavora_showcase.pptx` for manual PowerPoint validation.
 
 use zavora_slide::{
-    apply_design_theme, apply_layout_pattern, qa, Bullet, ChartKind, ChartSpec, Emu,
-    LayoutPattern, Layout, PatternParams, Presentation,
+    Bullet, ChartKind, ChartSpec, Emu, Layout, LayoutPattern, PatternParams, Presentation,
+    apply_design_theme, apply_layout_pattern, qa,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -36,9 +36,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut slide = p.slide_mut(s1).unwrap();
         slide.set_title("Highlights")?;
         slide.add_bullets(&[
-            Bullet { text: "Revenue up 24% year over year".into(), level: 0, bold: true },
-            Bullet { text: "Gross margin expanded to 61%".into(), level: 0, bold: false },
-            Bullet { text: "Net retention at 118%".into(), level: 1, bold: false },
+            Bullet {
+                text: "Revenue up 24% year over year".into(),
+                level: 0,
+                bold: true,
+            },
+            Bullet {
+                text: "Gross margin expanded to 61%".into(),
+                level: 0,
+                bold: false,
+            },
+            Bullet {
+                text: "Net retention at 118%".into(),
+                level: 1,
+                bold: false,
+            },
         ])?;
     }
 

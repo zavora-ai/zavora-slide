@@ -141,7 +141,12 @@ pub fn resolve_shape_geometry(
             // Non-placeholder: must have its own explicit xfrm
             let xfrm = shape.xfrm?;
             Some(ResolvedGeometry {
-                rect: Rect { x: xfrm.x, y: xfrm.y, w: xfrm.cx, h: xfrm.cy },
+                rect: Rect {
+                    x: xfrm.x,
+                    y: xfrm.y,
+                    w: xfrm.cx,
+                    h: xfrm.cy,
+                },
                 rotation: xfrm.rot,
             })
         }
@@ -150,21 +155,36 @@ pub fn resolve_shape_geometry(
             // 1. Check slide's own xfrm
             if let Some(xfrm) = shape.xfrm {
                 return Some(ResolvedGeometry {
-                    rect: Rect { x: xfrm.x, y: xfrm.y, w: xfrm.cx, h: xfrm.cy },
+                    rect: Rect {
+                        x: xfrm.x,
+                        y: xfrm.y,
+                        w: xfrm.cx,
+                        h: xfrm.cy,
+                    },
                     rotation: xfrm.rot,
                 });
             }
             // 2. Check layout
             if let Some(xfrm) = layout.find_placeholder_xfrm(key) {
                 return Some(ResolvedGeometry {
-                    rect: Rect { x: xfrm.x, y: xfrm.y, w: xfrm.cx, h: xfrm.cy },
+                    rect: Rect {
+                        x: xfrm.x,
+                        y: xfrm.y,
+                        w: xfrm.cx,
+                        h: xfrm.cy,
+                    },
                     rotation: xfrm.rot,
                 });
             }
             // 3. Check master
             if let Some(xfrm) = master.find_placeholder_xfrm(key) {
                 return Some(ResolvedGeometry {
-                    rect: Rect { x: xfrm.x, y: xfrm.y, w: xfrm.cx, h: xfrm.cy },
+                    rect: Rect {
+                        x: xfrm.x,
+                        y: xfrm.y,
+                        w: xfrm.cx,
+                        h: xfrm.cy,
+                    },
                     rotation: xfrm.rot,
                 });
             }
@@ -196,7 +216,13 @@ mod tests {
     use super::*;
 
     fn xfrm(x: i64, y: i64, cx: i64, cy: i64) -> ShapeXfrm {
-        ShapeXfrm { x, y, cx, cy, rot: 0 }
+        ShapeXfrm {
+            x,
+            y,
+            cx,
+            cy,
+            rot: 0,
+        }
     }
 
     fn xfrm_rot(x: i64, y: i64, cx: i64, cy: i64, rot: i64) -> ShapeXfrm {
@@ -204,7 +230,10 @@ mod tests {
     }
 
     fn ph_key(ph_type: &str, idx: Option<u32>) -> PlaceholderKey {
-        PlaceholderKey { ph_type: ph_type.to_string(), idx }
+        PlaceholderKey {
+            ph_type: ph_type.to_string(),
+            idx,
+        }
     }
 
     #[test]
@@ -225,7 +254,12 @@ mod tests {
         assert_eq!(
             resolved,
             Some(ResolvedGeometry {
-                rect: Rect { x: 100, y: 200, w: 8000000, h: 1000000 },
+                rect: Rect {
+                    x: 100,
+                    y: 200,
+                    w: 8000000,
+                    h: 1000000
+                },
                 rotation: 0,
             })
         );
@@ -254,7 +288,12 @@ mod tests {
         assert_eq!(
             resolved,
             Some(ResolvedGeometry {
-                rect: Rect { x: 457200, y: 1600200, w: 8229600, h: 4525963 },
+                rect: Rect {
+                    x: 457200,
+                    y: 1600200,
+                    w: 8229600,
+                    h: 4525963
+                },
                 rotation: 0,
             })
         );
@@ -273,7 +312,12 @@ mod tests {
         assert_eq!(
             resolved,
             Some(ResolvedGeometry {
-                rect: Rect { x: 500000, y: 600000, w: 2000000, h: 1000000 },
+                rect: Rect {
+                    x: 500000,
+                    y: 600000,
+                    w: 2000000,
+                    h: 1000000
+                },
                 rotation: 0,
             })
         );
@@ -305,7 +349,12 @@ mod tests {
         assert_eq!(
             resolved,
             Some(ResolvedGeometry {
-                rect: Rect { x: 100, y: 200, w: 300, h: 400 },
+                rect: Rect {
+                    x: 100,
+                    y: 200,
+                    w: 300,
+                    h: 400
+                },
                 rotation: 5400000,
             })
         );
@@ -394,7 +443,12 @@ mod tests {
         assert_eq!(
             resolved,
             Some(ResolvedGeometry {
-                rect: Rect { x: 4200000, y: 100, w: 4000000, h: 2000000 },
+                rect: Rect {
+                    x: 4200000,
+                    y: 100,
+                    w: 4000000,
+                    h: 2000000
+                },
                 rotation: 0,
             })
         );
@@ -424,7 +478,12 @@ mod tests {
         assert_eq!(
             resolved,
             Some(ResolvedGeometry {
-                rect: Rect { x: 1000, y: 2000, w: 7000000, h: 900000 },
+                rect: Rect {
+                    x: 1000,
+                    y: 2000,
+                    w: 7000000,
+                    h: 900000
+                },
                 rotation: 0,
             })
         );
@@ -447,7 +506,12 @@ mod tests {
         let resolved = resolve_shape_geometry(&slide_shape, &layout, &master);
         assert_eq!(
             resolved.unwrap().rect,
-            Rect { x: 100, y: 200, w: 8000000, h: 1000000 }
+            Rect {
+                x: 100,
+                y: 200,
+                w: 8000000,
+                h: 1000000
+            }
         );
     }
 

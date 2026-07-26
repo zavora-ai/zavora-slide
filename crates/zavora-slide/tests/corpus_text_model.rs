@@ -79,7 +79,10 @@ fn corpus_insert_paragraph_is_surgical() {
     assert_only_changed(&orig, &after, &["/ppt/slides/slide1.xml"]);
 
     let xml = String::from_utf8(after["/ppt/slides/slide1.xml"].clone()).unwrap();
-    assert!(xml.contains("Inserted at top"), "inserted paragraph present");
+    assert!(
+        xml.contains("Inserted at top"),
+        "inserted paragraph present"
+    );
 }
 
 #[test]
@@ -231,7 +234,10 @@ fn corpus_format_run_is_surgical() {
     let xml = String::from_utf8(after["/ppt/slides/slide1.xml"].clone()).unwrap();
     assert!(xml.contains(r#"b="1""#), "bold applied");
     assert!(xml.contains(r#"i="1""#), "italic applied");
-    assert!(xml.contains(r#"strike="sngStrike""#), "strikethrough applied");
+    assert!(
+        xml.contains(r#"strike="sngStrike""#),
+        "strikethrough applied"
+    );
     assert!(xml.contains("schemeClr"), "theme color applied");
 }
 
@@ -244,8 +250,13 @@ fn corpus_autofit_shrink_to_fit_is_surgical() {
     let (mut dom, pkg) = open_slide_dom();
     let orig = package_entries(&pkg);
 
-    dom.set_autofit(1, &AutoFit::ShrinkToFit { font_scale: Some(80_000) })
-        .unwrap();
+    dom.set_autofit(
+        1,
+        &AutoFit::ShrinkToFit {
+            font_scale: Some(80_000),
+        },
+    )
+    .unwrap();
 
     let after = rebuild_with_edited_dom(&pkg, "/ppt/slides/slide1.xml", &dom);
     assert_only_changed(&orig, &after, &["/ppt/slides/slide1.xml"]);
@@ -275,8 +286,13 @@ fn corpus_autofit_none_is_surgical() {
     let orig = package_entries(&pkg);
 
     // First set an autofit mode, then remove it.
-    dom.set_autofit(1, &AutoFit::ShrinkToFit { font_scale: Some(90_000) })
-        .unwrap();
+    dom.set_autofit(
+        1,
+        &AutoFit::ShrinkToFit {
+            font_scale: Some(90_000),
+        },
+    )
+    .unwrap();
     dom.set_autofit(1, &AutoFit::None).unwrap();
 
     let after = rebuild_with_edited_dom(&pkg, "/ppt/slides/slide1.xml", &dom);
@@ -307,7 +323,10 @@ fn corpus_text_model_round_trip() {
     let mut p = Presentation::open(SAMPLE).unwrap();
 
     // Edit title (uses DOM paragraph editing internally).
-    p.slide_mut(0).unwrap().set_title("Round-trip Title").unwrap();
+    p.slide_mut(0)
+        .unwrap()
+        .set_title("Round-trip Title")
+        .unwrap();
 
     // Save and reopen.
     let buf = p.save_to_buffer().unwrap();
@@ -322,7 +341,10 @@ fn corpus_text_model_round_trip() {
 
     // Verify other slides untouched.
     let s2_text = p2.slide(1).unwrap().text();
-    assert!(!s2_text.is_empty() || s2_text.is_empty(), "slide 2 accessible");
+    assert!(
+        !s2_text.is_empty() || s2_text.is_empty(),
+        "slide 2 accessible"
+    );
 }
 
 #[test]
@@ -374,12 +396,21 @@ fn corpus_autofit_round_trip_via_dom() {
     let part = pkg.get_part("/ppt/slides/slide1.xml").unwrap();
 
     let mut dom = SlideDom::parse(part).unwrap();
-    dom.set_autofit(1, &AutoFit::ShrinkToFit { font_scale: Some(75_000) })
-        .unwrap();
+    dom.set_autofit(
+        1,
+        &AutoFit::ShrinkToFit {
+            font_scale: Some(75_000),
+        },
+    )
+    .unwrap();
 
     let edited_bytes = dom.to_bytes();
     let dom2 = SlideDom::parse(&edited_bytes).unwrap();
-    assert_eq!(dom2.to_bytes(), edited_bytes, "autofit DOM stable after reparse");
+    assert_eq!(
+        dom2.to_bytes(),
+        edited_bytes,
+        "autofit DOM stable after reparse"
+    );
 
     let xml = String::from_utf8(edited_bytes).unwrap();
     assert!(xml.contains("normAutofit"), "autofit persisted");
@@ -394,16 +425,17 @@ fn corpus_full_edit_save_reopen_verify() {
     let mut p = Presentation::open(SAMPLE).unwrap();
 
     // Multiple edits on the same slide.
-    p.slide_mut(0).unwrap().set_title("Full Edit Title").unwrap();
     p.slide_mut(0)
         .unwrap()
-        .add_text_box(
-            "Extra box",
-            zavora_slide::Emu::inches(2.0),
-            zavora_slide::Emu::inches(3.0),
-            zavora_slide::Emu::inches(4.0),
-            zavora_slide::Emu::inches(1.0),
-        );
+        .set_title("Full Edit Title")
+        .unwrap();
+    p.slide_mut(0).unwrap().add_text_box(
+        "Extra box",
+        zavora_slide::Emu::inches(2.0),
+        zavora_slide::Emu::inches(3.0),
+        zavora_slide::Emu::inches(4.0),
+        zavora_slide::Emu::inches(1.0),
+    );
 
     // Save → reopen.
     let buf = p.save_to_buffer().unwrap();
@@ -417,7 +449,10 @@ fn corpus_full_edit_save_reopen_verify() {
     let buf2 = p2.save_to_buffer().unwrap();
     let p3 = Presentation::open_from_bytes(&buf2).unwrap();
     let text2 = p3.slide(0).unwrap().text();
-    assert!(text2.contains("Full Edit Title"), "title stable across saves");
+    assert!(
+        text2.contains("Full Edit Title"),
+        "title stable across saves"
+    );
     assert!(text2.contains("Extra box"), "text box stable across saves");
 }
 

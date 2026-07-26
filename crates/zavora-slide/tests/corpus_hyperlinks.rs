@@ -72,8 +72,13 @@ fn corpus_set_shape_click_action_is_surgical() {
     let orig = package_entries(&pkg);
 
     // Set an external URL click action on shape 0.
-    dom.set_shape_click_action(0, &ClickAction::ExternalUrl { r_id: "rId21".into() })
-        .unwrap();
+    dom.set_shape_click_action(
+        0,
+        &ClickAction::ExternalUrl {
+            r_id: "rId21".into(),
+        },
+    )
+    .unwrap();
 
     let after = rebuild_with_edited_dom(&pkg, "/ppt/slides/slide1.xml", &dom);
     assert_only_changed(&orig, &after, &["/ppt/slides/slide1.xml"]);
@@ -104,7 +109,10 @@ fn corpus_set_shape_click_action_jump_to_slide_is_surgical() {
     let xml = String::from_utf8(after["/ppt/slides/slide1.xml"].clone()).unwrap();
     assert!(xml.contains("hlinkClick"), "click action element emitted");
     assert!(xml.contains("rId22"), "relationship id present");
-    assert!(xml.contains("ppaction://hlinksldjump"), "action attribute present");
+    assert!(
+        xml.contains("ppaction://hlinksldjump"),
+        "action attribute present"
+    );
 }
 
 // ===========================================================================
@@ -142,8 +150,14 @@ fn corpus_core_properties_read_write_round_trip() {
     assert_eq!(read_back.title.as_deref(), Some("Corpus Test Title"));
     assert_eq!(read_back.author.as_deref(), Some("Corpus Test Author"));
     assert_eq!(read_back.subject.as_deref(), Some("Corpus Subject"));
-    assert_eq!(read_back.keywords.as_deref(), Some("corpus, test, hyperlinks"));
-    assert_eq!(read_back.comments.as_deref(), Some("Integration test comment"));
+    assert_eq!(
+        read_back.keywords.as_deref(),
+        Some("corpus, test, hyperlinks")
+    );
+    assert_eq!(
+        read_back.comments.as_deref(),
+        Some("Integration test comment")
+    );
     assert_eq!(read_back.category.as_deref(), Some("Testing"));
     assert_eq!(read_back.created.as_deref(), Some("2025-01-15T10:00:00Z"));
     assert_eq!(read_back.modified.as_deref(), Some("2025-01-15T12:00:00Z"));
@@ -186,18 +200,26 @@ fn corpus_notes_editing_is_surgical() {
 
     // The notes part should be the only thing that changed.
     assert!(
-        diffs.iter().all(|d| d.contains("notesSlide") || d.contains("notes")),
+        diffs
+            .iter()
+            .all(|d| d.contains("notesSlide") || d.contains("notes")),
         "only notes-related parts should change, but got: {diffs:?}"
     );
     assert!(!diffs.is_empty(), "at least one notes part should change");
 
     // Verify the notes text was updated.
     let p3 = Presentation::open_from_bytes(&buf2).unwrap();
-    assert_eq!(p3.slide(0).unwrap().notes(), Some("Updated notes via DOM path"));
+    assert_eq!(
+        p3.slide(0).unwrap().notes(),
+        Some("Updated notes via DOM path")
+    );
 
     // Verify the slide title is preserved.
     let slide_text = p3.slide(0).unwrap().text();
-    assert!(slide_text.contains("Corpus Notes Test"), "slide title preserved");
+    assert!(
+        slide_text.contains("Corpus Notes Test"),
+        "slide title preserved"
+    );
 }
 
 // ===========================================================================
@@ -223,8 +245,14 @@ fn corpus_footer_editing_is_surgical() {
     // Title is preserved.
     assert!(output.contains("Main Title"), "title preserved");
     // Slide number and date are preserved.
-    assert!(output.contains("Slide Number Placeholder 4"), "slide number placeholder preserved");
-    assert!(output.contains("Date Placeholder 5"), "date placeholder preserved");
+    assert!(
+        output.contains("Slide Number Placeholder 4"),
+        "slide number placeholder preserved"
+    );
+    assert!(
+        output.contains("Date Placeholder 5"),
+        "date placeholder preserved"
+    );
     assert!(output.contains("2024-01-15"), "date text preserved");
     // Footer is updated.
     assert!(output.contains("Updated Footer"), "footer updated");
@@ -235,8 +263,14 @@ fn corpus_footer_editing_is_surgical() {
     dom2.set_slide_number_text("99").unwrap();
     let output2 = String::from_utf8_lossy(&dom2.to_bytes()).to_string();
     assert!(output2.contains(">99<"), "slide number updated");
-    assert!(output2.contains("Original Footer"), "footer preserved when editing slide number");
-    assert!(output2.contains("Main Title"), "title preserved when editing slide number");
+    assert!(
+        output2.contains("Original Footer"),
+        "footer preserved when editing slide number"
+    );
+    assert!(
+        output2.contains("Main Title"),
+        "title preserved when editing slide number"
+    );
 
     // Edit date — only that placeholder changes.
     let mut dom3 = SlideDom::parse(slide_xml).unwrap();
@@ -244,8 +278,14 @@ fn corpus_footer_editing_is_surgical() {
     let output3 = String::from_utf8_lossy(&dom3.to_bytes()).to_string();
     assert!(output3.contains("2025-06-15"), "date updated");
     assert!(!output3.contains("2024-01-15"), "old date removed");
-    assert!(output3.contains("Original Footer"), "footer preserved when editing date");
-    assert!(output3.contains("Main Title"), "title preserved when editing date");
+    assert!(
+        output3.contains("Original Footer"),
+        "footer preserved when editing date"
+    );
+    assert!(
+        output3.contains("Main Title"),
+        "title preserved when editing date"
+    );
 }
 
 // ===========================================================================
@@ -293,7 +333,11 @@ fn corpus_hyperlinks_properties_notes_round_trip() {
     // Verify the deck still opens cleanly (save again to confirm stability).
     let buf2 = reopened.save_to_buffer().unwrap();
     let p3 = Presentation::open_from_bytes(&buf2).unwrap();
-    assert_eq!(p3.slide_count(), slide_count, "stable across multiple saves");
+    assert_eq!(
+        p3.slide_count(),
+        slide_count,
+        "stable across multiple saves"
+    );
 
     // Verify hyperlink edits at the DOM level persist through round-trip.
     let pkg = OpcPackage::from_reader(std::io::Cursor::new(buf.clone())).unwrap();
@@ -305,8 +349,13 @@ fn corpus_hyperlinks_properties_notes_round_trip() {
         .unwrap();
 
     // Set a click action on shape 0.
-    dom.set_shape_click_action(0, &ClickAction::ExternalUrl { r_id: "rId31".into() })
-        .unwrap();
+    dom.set_shape_click_action(
+        0,
+        &ClickAction::ExternalUrl {
+            r_id: "rId31".into(),
+        },
+    )
+    .unwrap();
 
     // Write back and rebuild.
     let mut buf_out = std::io::Cursor::new(Vec::new());
@@ -319,8 +368,7 @@ fn corpus_hyperlinks_properties_notes_round_trip() {
     pkg2.write_to(&mut final_buf).unwrap();
 
     // Reopen and verify the hyperlink edits persisted.
-    let final_pkg =
-        OpcPackage::from_reader(std::io::Cursor::new(final_buf.into_inner())).unwrap();
+    let final_pkg = OpcPackage::from_reader(std::io::Cursor::new(final_buf.into_inner())).unwrap();
     let final_part = final_pkg.get_part("/ppt/slides/slide1.xml").unwrap();
     let final_xml = String::from_utf8(final_part.to_vec()).unwrap();
 
@@ -328,12 +376,6 @@ fn corpus_hyperlinks_properties_notes_round_trip() {
         final_xml.contains("hlinkClick"),
         "hyperlink persisted through round-trip"
     );
-    assert!(
-        final_xml.contains("rId30"),
-        "run hyperlink rId persisted"
-    );
-    assert!(
-        final_xml.contains("rId31"),
-        "click action rId persisted"
-    );
+    assert!(final_xml.contains("rId30"), "run hyperlink rId persisted");
+    assert!(final_xml.contains("rId31"), "click action rId persisted");
 }

@@ -133,10 +133,14 @@ pub(crate) fn add_chart_to_slide(
     chart_index: usize,
 ) -> Result<()> {
     if spec.categories.is_empty() {
-        return Err(SlideError::InvalidInput("chart must have at least one category".into()));
+        return Err(SlideError::InvalidInput(
+            "chart must have at least one category".into(),
+        ));
     }
     if spec.series.is_empty() {
-        return Err(SlideError::InvalidInput("chart must have at least one series".into()));
+        return Err(SlideError::InvalidInput(
+            "chart must have at least one series".into(),
+        ));
     }
 
     let chart_part = format!("/ppt/charts/chart{chart_index}.xml");
@@ -178,13 +182,15 @@ pub(crate) fn add_chart_to_slide(
     slide.chart_frames.push(graphic_frame_xml);
 
     // Store a chart placeholder for rendering in the Scene.
-    slide.chart_placeholders.push(crate::slide::ChartPlaceholder {
-        x,
-        y,
-        cx,
-        cy,
-        title: spec.title.clone(),
-    });
+    slide
+        .chart_placeholders
+        .push(crate::slide::ChartPlaceholder {
+            x,
+            y,
+            cx,
+            cy,
+            title: spec.title.clone(),
+        });
 
     Ok(())
 }
@@ -249,9 +255,7 @@ fn build_chart_xml(spec: &ChartSpec, _workbook_rel_path: &str) -> String {
     xml.push_str("</c:chart>");
 
     // External data reference (link to embedded workbook).
-    xml.push_str(
-        "<c:externalData r:id=\"rId1\"><c:autoUpdate val=\"0\"/></c:externalData>"
-    );
+    xml.push_str("<c:externalData r:id=\"rId1\"><c:autoUpdate val=\"0\"/></c:externalData>");
 
     xml.push_str("</c:chartSpace>");
     xml
@@ -297,7 +301,9 @@ fn build_chart_type_xml(xml: &mut String, spec: &ChartSpec) {
             xml.push_str("</c:areaChart>");
         }
         ChartKind::Scatter => {
-            xml.push_str("<c:scatterChart><c:scatterStyle val=\"lineMarker\"/><c:varyColors val=\"0\"/>");
+            xml.push_str(
+                "<c:scatterChart><c:scatterStyle val=\"lineMarker\"/><c:varyColors val=\"0\"/>",
+            );
             build_scatter_series(xml, spec);
             xml.push_str("<c:axId val=\"1\"/><c:axId val=\"2\"/>");
             xml.push_str("</c:scatterChart>");
@@ -309,7 +315,9 @@ fn build_chart_type_xml(xml: &mut String, spec: &ChartSpec) {
 fn build_cat_val_series(xml: &mut String, spec: &ChartSpec) {
     let num_cats = spec.categories.len();
     for (idx, (name, values)) in spec.series.iter().enumerate() {
-        xml.push_str(&format!("<c:ser><c:idx val=\"{idx}\"/><c:order val=\"{idx}\"/>"));
+        xml.push_str(&format!(
+            "<c:ser><c:idx val=\"{idx}\"/><c:order val=\"{idx}\"/>"
+        ));
         // Series name.
         xml.push_str(&format!(
             "<c:tx><c:strRef><c:f>Sheet1!${}$1</c:f><c:strCache><c:ptCount val=\"1\"/><c:pt idx=\"0\"><c:v>{}</c:v></c:pt></c:strCache></c:strRef></c:tx>",
@@ -338,7 +346,9 @@ fn build_cat_val_series(xml: &mut String, spec: &ChartSpec) {
             "<c:val><c:numRef><c:f>Sheet1!${col}$2:${col}${}</c:f><c:numCache>",
             num_cats + 1
         ));
-        xml.push_str(&format!("<c:formatCode>General</c:formatCode><c:ptCount val=\"{num_cats}\"/>"));
+        xml.push_str(&format!(
+            "<c:formatCode>General</c:formatCode><c:ptCount val=\"{num_cats}\"/>"
+        ));
         for (vi, val) in values.iter().enumerate() {
             xml.push_str(&format!("<c:pt idx=\"{vi}\"><c:v>{val}</c:v></c:pt>"));
         }
@@ -351,7 +361,9 @@ fn build_cat_val_series(xml: &mut String, spec: &ChartSpec) {
 fn build_scatter_series(xml: &mut String, spec: &ChartSpec) {
     let num_cats = spec.categories.len();
     for (idx, (name, values)) in spec.series.iter().enumerate() {
-        xml.push_str(&format!("<c:ser><c:idx val=\"{idx}\"/><c:order val=\"{idx}\"/>"));
+        xml.push_str(&format!(
+            "<c:ser><c:idx val=\"{idx}\"/><c:order val=\"{idx}\"/>"
+        ));
         // Series name.
         xml.push_str(&format!(
             "<c:tx><c:strRef><c:f>Sheet1!${}$1</c:f><c:strCache><c:ptCount val=\"1\"/><c:pt idx=\"0\"><c:v>{}</c:v></c:pt></c:strCache></c:strRef></c:tx>",
@@ -380,7 +392,9 @@ fn build_scatter_series(xml: &mut String, spec: &ChartSpec) {
             "<c:yVal><c:numRef><c:f>Sheet1!${col}$2:${col}${}</c:f><c:numCache>",
             num_cats + 1
         ));
-        xml.push_str(&format!("<c:formatCode>General</c:formatCode><c:ptCount val=\"{num_cats}\"/>"));
+        xml.push_str(&format!(
+            "<c:formatCode>General</c:formatCode><c:ptCount val=\"{num_cats}\"/>"
+        ));
         for (vi, val) in values.iter().enumerate() {
             xml.push_str(&format!("<c:pt idx=\"{vi}\"><c:v>{val}</c:v></c:pt>"));
         }
@@ -390,14 +404,7 @@ fn build_scatter_series(xml: &mut String, spec: &ChartSpec) {
 }
 
 /// Build the `p:graphicFrame` XML for embedding a chart in the slide's spTree.
-fn build_graphic_frame_xml(
-    shape_id: u32,
-    r_id: &str,
-    x: i64,
-    y: i64,
-    cx: i64,
-    cy: i64,
-) -> String {
+fn build_graphic_frame_xml(shape_id: u32, r_id: &str, x: i64, y: i64, cx: i64, cy: i64) -> String {
     format!(
         "<p:graphicFrame>\
          <p:nvGraphicFramePr>\
@@ -440,7 +447,11 @@ pub(crate) fn write_chart_parts(
         // Slide → chart relationship.
         let slide_rels = pkg.get_or_create_part_rels(slide_part);
         let chart_target = relative_path(slide_part, &chart.part_path);
-        slide_rels.add_with_id(&chart.slide_r_id, zavora_slide_opc::rel_types::CHART, &chart_target);
+        slide_rels.add_with_id(
+            &chart.slide_r_id,
+            zavora_slide_opc::rel_types::CHART,
+            &chart_target,
+        );
 
         // Chart → workbook relationship (package type).
         let chart_rels = pkg.get_or_create_part_rels(&chart.part_path);
@@ -481,10 +492,14 @@ pub(crate) fn update_chart_data(
     update: &ChartDataUpdate,
 ) -> Result<()> {
     if update.categories.is_empty() {
-        return Err(SlideError::InvalidInput("chart update must have at least one category".into()));
+        return Err(SlideError::InvalidInput(
+            "chart update must have at least one category".into(),
+        ));
     }
     if update.series.is_empty() {
-        return Err(SlideError::InvalidInput("chart update must have at least one series".into()));
+        return Err(SlideError::InvalidInput(
+            "chart update must have at least one series".into(),
+        ));
     }
 
     // 1. Locate the chart part via the slide's relationships.
@@ -498,15 +513,14 @@ pub(crate) fn update_chart_data(
         })
         .unwrap_or_default();
 
-    let (_chart_rid, chart_target) = chart_rels
-        .get(chart_idx)
-        .ok_or_else(|| SlideError::NotFound(format!(
-            "chart index {chart_idx} on slide {slide_part}"
-        )))?;
+    let (_chart_rid, chart_target) = chart_rels.get(chart_idx).ok_or_else(|| {
+        SlideError::NotFound(format!("chart index {chart_idx} on slide {slide_part}"))
+    })?;
 
-    let chart_part_path = normalize_chart_path(
-        &zavora_slide_opc::OpcPackage::resolve_rel_target(slide_part, chart_target)
-    );
+    let chart_part_path = normalize_chart_path(&zavora_slide_opc::OpcPackage::resolve_rel_target(
+        slide_part,
+        chart_target,
+    ));
 
     // 2. Parse the chart XML via the lossless DOM.
     let chart_bytes = pkg
@@ -541,24 +555,17 @@ pub(crate) fn update_chart_data(
 }
 
 /// Find the embedded workbook part path from the chart's relationships.
-fn find_workbook_part(
-    pkg: &zavora_slide_opc::OpcPackage,
-    chart_part_path: &str,
-) -> Result<String> {
-    let chart_rels = pkg
-        .get_part_rels(chart_part_path)
-        .ok_or_else(|| SlideError::NotFound(format!(
-            "chart relationships for {chart_part_path}"
-        )))?;
+fn find_workbook_part(pkg: &zavora_slide_opc::OpcPackage, chart_part_path: &str) -> Result<String> {
+    let chart_rels = pkg.get_part_rels(chart_part_path).ok_or_else(|| {
+        SlideError::NotFound(format!("chart relationships for {chart_part_path}"))
+    })?;
 
     let wb_rel = chart_rels
         .get_by_type(RT_PACKAGE)
-        .ok_or_else(|| SlideError::NotFound(
-            "embedded workbook relationship in chart".into()
-        ))?;
+        .ok_or_else(|| SlideError::NotFound("embedded workbook relationship in chart".into()))?;
 
     Ok(normalize_chart_path(
-        &zavora_slide_opc::OpcPackage::resolve_rel_target(chart_part_path, &wb_rel.target)
+        &zavora_slide_opc::OpcPackage::resolve_rel_target(chart_part_path, &wb_rel.target),
     ))
 }
 
@@ -567,9 +574,9 @@ fn find_workbook_part(
 /// Handles both cat/val charts (bar, line, pie, area) and xVal/yVal charts (scatter).
 /// Preserves all other elements (styling, effects, formatting) in the DOM.
 fn update_series_in_dom(doc: &mut Document, update: &ChartDataUpdate) -> Result<()> {
-    let root = doc.root_mut().ok_or_else(|| {
-        SlideError::Unsupported("chart XML has no root element".into())
-    })?;
+    let root = doc
+        .root_mut()
+        .ok_or_else(|| SlideError::Unsupported("chart XML has no root element".into()))?;
 
     // Find c:chart > c:plotArea > chart-type element > c:ser elements.
     // We need to traverse: chartSpace > chart > plotArea > (barChart|lineChart|...) > ser
@@ -623,10 +630,18 @@ fn update_series_in_dom(doc: &mut Document, update: &ChartDataUpdate) -> Result<
         let col = col_letter(ser_idx + 1);
         if is_scatter {
             update_formula_ref(ser_el, b"xVal", &format!("Sheet1!$A$2:$A${}", num_cats + 1));
-            update_formula_ref(ser_el, b"yVal", &format!("Sheet1!${col}$2:${col}${}", num_cats + 1));
+            update_formula_ref(
+                ser_el,
+                b"yVal",
+                &format!("Sheet1!${col}$2:${col}${}", num_cats + 1),
+            );
         } else {
             update_formula_ref(ser_el, b"cat", &format!("Sheet1!$A$2:$A${}", num_cats + 1));
-            update_formula_ref(ser_el, b"val", &format!("Sheet1!${col}$2:${col}${}", num_cats + 1));
+            update_formula_ref(
+                ser_el,
+                b"val",
+                &format!("Sheet1!${col}$2:${col}${}", num_cats + 1),
+            );
         }
 
         // Update series name formula reference.
@@ -640,9 +655,23 @@ fn update_series_in_dom(doc: &mut Document, update: &ChartDataUpdate) -> Result<
             let (ref name, ref values) = update.series[ser_idx];
             let col = col_letter(ser_idx + 1);
             let new_ser_xml = if is_scatter {
-                build_single_scatter_ser_xml(ser_idx, name, &update.categories, values, &col, num_cats)
+                build_single_scatter_ser_xml(
+                    ser_idx,
+                    name,
+                    &update.categories,
+                    values,
+                    &col,
+                    num_cats,
+                )
             } else {
-                build_single_cat_val_ser_xml(ser_idx, name, &update.categories, values, &col, num_cats)
+                build_single_cat_val_ser_xml(
+                    ser_idx,
+                    name,
+                    &update.categories,
+                    values,
+                    &col,
+                    num_cats,
+                )
             };
             let frag = Document::parse(new_ser_xml.as_bytes())
                 .map_err(|e| SlideError::Unsupported(format!("ser fragment parse: {e}")))?;
@@ -762,7 +791,10 @@ fn rebuild_str_cache_children(cache: &mut Element, categories: &[String]) {
     let mut xml = String::new();
     xml.push_str(&format!("<c:ptCount val=\"{}\"/>", categories.len()));
     for (i, cat) in categories.iter().enumerate() {
-        xml.push_str(&format!("<c:pt idx=\"{i}\"><c:v>{}</c:v></c:pt>", xml_escape(cat)));
+        xml.push_str(&format!(
+            "<c:pt idx=\"{i}\"><c:v>{}</c:v></c:pt>",
+            xml_escape(cat)
+        ));
     }
 
     // Parse and replace children, preserving formatCode if present.
@@ -820,7 +852,11 @@ fn rebuild_num_cache_children(cache: &mut Element, values: &[f64]) {
         cache.children.push(fc);
     }
     // Always add a formatCode for numeric caches if one wasn't preserved.
-    if !cache.children.iter().any(|n| matches!(n, Node::Element(e) if e.local_name() == b"formatCode")) {
+    if !cache
+        .children
+        .iter()
+        .any(|n| matches!(n, Node::Element(e) if e.local_name() == b"formatCode"))
+    {
         let fc_xml = "<wrapper xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:formatCode>General</c:formatCode></wrapper>";
         if let Ok(fc_doc) = Document::parse(fc_xml.as_bytes())
             && let Some(fc_root) = fc_doc.root()
@@ -879,7 +915,9 @@ fn build_single_cat_val_ser_xml(
     col: &str,
     num_cats: usize,
 ) -> String {
-    let mut xml = format!("<c:ser xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:idx val=\"{idx}\"/><c:order val=\"{idx}\"/>");
+    let mut xml = format!(
+        "<c:ser xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:idx val=\"{idx}\"/><c:order val=\"{idx}\"/>"
+    );
     xml.push_str(&format!(
         "<c:tx><c:strRef><c:f>Sheet1!${col}$1</c:f><c:strCache><c:ptCount val=\"1\"/><c:pt idx=\"0\"><c:v>{}</c:v></c:pt></c:strCache></c:strRef></c:tx>",
         xml_escape(name)
@@ -889,14 +927,19 @@ fn build_single_cat_val_ser_xml(
     xml.push_str("</c:f><c:strCache>");
     xml.push_str(&format!("<c:ptCount val=\"{num_cats}\"/>"));
     for (ci, cat) in categories.iter().enumerate() {
-        xml.push_str(&format!("<c:pt idx=\"{ci}\"><c:v>{}</c:v></c:pt>", xml_escape(cat)));
+        xml.push_str(&format!(
+            "<c:pt idx=\"{ci}\"><c:v>{}</c:v></c:pt>",
+            xml_escape(cat)
+        ));
     }
     xml.push_str("</c:strCache></c:strRef></c:cat>");
     xml.push_str(&format!(
         "<c:val><c:numRef><c:f>Sheet1!${col}$2:${col}${}</c:f><c:numCache>",
         num_cats + 1
     ));
-    xml.push_str(&format!("<c:formatCode>General</c:formatCode><c:ptCount val=\"{num_cats}\"/>"));
+    xml.push_str(&format!(
+        "<c:formatCode>General</c:formatCode><c:ptCount val=\"{num_cats}\"/>"
+    ));
     for (vi, val) in values.iter().enumerate() {
         xml.push_str(&format!("<c:pt idx=\"{vi}\"><c:v>{val}</c:v></c:pt>"));
     }
@@ -914,7 +957,9 @@ fn build_single_scatter_ser_xml(
     col: &str,
     num_cats: usize,
 ) -> String {
-    let mut xml = format!("<c:ser xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:idx val=\"{idx}\"/><c:order val=\"{idx}\"/>");
+    let mut xml = format!(
+        "<c:ser xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:idx val=\"{idx}\"/><c:order val=\"{idx}\"/>"
+    );
     xml.push_str(&format!(
         "<c:tx><c:strRef><c:f>Sheet1!${col}$1</c:f><c:strCache><c:ptCount val=\"1\"/><c:pt idx=\"0\"><c:v>{}</c:v></c:pt></c:strCache></c:strRef></c:tx>",
         xml_escape(name)
@@ -924,14 +969,19 @@ fn build_single_scatter_ser_xml(
     xml.push_str("</c:f><c:strCache>");
     xml.push_str(&format!("<c:ptCount val=\"{num_cats}\"/>"));
     for (ci, cat) in categories.iter().enumerate() {
-        xml.push_str(&format!("<c:pt idx=\"{ci}\"><c:v>{}</c:v></c:pt>", xml_escape(cat)));
+        xml.push_str(&format!(
+            "<c:pt idx=\"{ci}\"><c:v>{}</c:v></c:pt>",
+            xml_escape(cat)
+        ));
     }
     xml.push_str("</c:strCache></c:strRef></c:xVal>");
     xml.push_str(&format!(
         "<c:yVal><c:numRef><c:f>Sheet1!${col}$2:${col}${}</c:f><c:numCache>",
         num_cats + 1
     ));
-    xml.push_str(&format!("<c:formatCode>General</c:formatCode><c:ptCount val=\"{num_cats}\"/>"));
+    xml.push_str(&format!(
+        "<c:formatCode>General</c:formatCode><c:ptCount val=\"{num_cats}\"/>"
+    ));
     for (vi, val) in values.iter().enumerate() {
         xml.push_str(&format!("<c:pt idx=\"{vi}\"><c:v>{val}</c:v></c:pt>"));
     }
@@ -1244,8 +1294,14 @@ mod tests {
         let plot_area_end = xml.find("</c:plotArea>").unwrap();
         let legend_start = xml.find("<c:legend>").unwrap();
         let plot_vis = xml.find("<c:plotVisOnly").unwrap();
-        assert!(legend_start > plot_area_end, "legend should be after plotArea");
-        assert!(legend_start < plot_vis, "legend should be before plotVisOnly");
+        assert!(
+            legend_start > plot_area_end,
+            "legend should be after plotArea"
+        );
+        assert!(
+            legend_start < plot_vis,
+            "legend should be before plotVisOnly"
+        );
     }
 
     #[test]
@@ -1292,7 +1348,9 @@ mod tests {
         };
         let xml = build_chart_xml(&spec, "/ppt/embeddings/wb1.xlsx");
         // Each series should have data labels.
-        let dlbls_count = xml.matches("<c:dLbls><c:showVal val=\"1\"/></c:dLbls>").count();
+        let dlbls_count = xml
+            .matches("<c:dLbls><c:showVal val=\"1\"/></c:dLbls>")
+            .count();
         assert_eq!(dlbls_count, 2, "each series should have data labels");
     }
 

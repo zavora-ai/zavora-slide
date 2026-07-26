@@ -377,7 +377,10 @@ const SHAPE_PRESET_TABLE: &[(ShapePreset, &str)] = &[
     (ShapePreset::UturnArrow, "uturnArrow"),
     (ShapePreset::CircularArrow, "circularArrow"),
     (ShapePreset::LeftCircularArrow, "leftCircularArrow"),
-    (ShapePreset::LeftRightCircularArrow, "leftRightCircularArrow"),
+    (
+        ShapePreset::LeftRightCircularArrow,
+        "leftRightCircularArrow",
+    ),
     (ShapePreset::CurvedRightArrow, "curvedRightArrow"),
     (ShapePreset::CurvedLeftArrow, "curvedLeftArrow"),
     (ShapePreset::CurvedUpArrow, "curvedUpArrow"),
@@ -437,34 +440,61 @@ const SHAPE_PRESET_TABLE: &[(ShapePreset, &str)] = &[
     (ShapePreset::AccentBorderCallout3, "accentBorderCallout3"),
     // Flowchart
     (ShapePreset::FlowChartProcess, "flowChartProcess"),
-    (ShapePreset::FlowChartAlternateProcess, "flowChartAlternateProcess"),
+    (
+        ShapePreset::FlowChartAlternateProcess,
+        "flowChartAlternateProcess",
+    ),
     (ShapePreset::FlowChartDecision, "flowChartDecision"),
     (ShapePreset::FlowChartInputOutput, "flowChartInputOutput"),
-    (ShapePreset::FlowChartPredefinedProcess, "flowChartPredefinedProcess"),
-    (ShapePreset::FlowChartInternalStorage, "flowChartInternalStorage"),
+    (
+        ShapePreset::FlowChartPredefinedProcess,
+        "flowChartPredefinedProcess",
+    ),
+    (
+        ShapePreset::FlowChartInternalStorage,
+        "flowChartInternalStorage",
+    ),
     (ShapePreset::FlowChartDocument, "flowChartDocument"),
-    (ShapePreset::FlowChartMultidocument, "flowChartMultidocument"),
+    (
+        ShapePreset::FlowChartMultidocument,
+        "flowChartMultidocument",
+    ),
     (ShapePreset::FlowChartTerminator, "flowChartTerminator"),
     (ShapePreset::FlowChartPreparation, "flowChartPreparation"),
     (ShapePreset::FlowChartManualInput, "flowChartManualInput"),
-    (ShapePreset::FlowChartManualOperation, "flowChartManualOperation"),
+    (
+        ShapePreset::FlowChartManualOperation,
+        "flowChartManualOperation",
+    ),
     (ShapePreset::FlowChartConnector, "flowChartConnector"),
-    (ShapePreset::FlowChartOffpageConnector, "flowChartOffpageConnector"),
+    (
+        ShapePreset::FlowChartOffpageConnector,
+        "flowChartOffpageConnector",
+    ),
     (ShapePreset::FlowChartPunchedCard, "flowChartPunchedCard"),
     (ShapePreset::FlowChartPunchedTape, "flowChartPunchedTape"),
-    (ShapePreset::FlowChartSummingJunction, "flowChartSummingJunction"),
+    (
+        ShapePreset::FlowChartSummingJunction,
+        "flowChartSummingJunction",
+    ),
     (ShapePreset::FlowChartOr, "flowChartOr"),
     (ShapePreset::FlowChartCollate, "flowChartCollate"),
     (ShapePreset::FlowChartSort, "flowChartSort"),
     (ShapePreset::FlowChartExtract, "flowChartExtract"),
     (ShapePreset::FlowChartMerge, "flowChartMerge"),
-    (ShapePreset::FlowChartOnlineStorage, "flowChartOnlineStorage"),
+    (
+        ShapePreset::FlowChartOnlineStorage,
+        "flowChartOnlineStorage",
+    ),
     (ShapePreset::FlowChartDelay, "flowChartDelay"),
     (ShapePreset::FlowChartMagneticTape, "flowChartMagneticTape"),
     (ShapePreset::FlowChartMagneticDisk, "flowChartMagneticDisk"),
     (ShapePreset::FlowChartMagneticDrum, "flowChartMagneticDrum"),
     (ShapePreset::FlowChartDisplay, "flowChartDisplay"),
-    (ShapePreset::FlowChartOfflineStorage, "flowChartOfflineStorage"),
+    (
+        ShapePreset::FlowChartOfflineStorage,
+        "flowChartOfflineStorage",
+    ),
     // Math / equation shapes
     (ShapePreset::MathPlus, "mathPlus"),
     (ShapePreset::MathMinus, "mathMinus"),
@@ -476,9 +506,18 @@ const SHAPE_PRESET_TABLE: &[(ShapePreset, &str)] = &[
     (ShapePreset::ActionButtonBlank, "actionButtonBlank"),
     (ShapePreset::ActionButtonHome, "actionButtonHome"),
     (ShapePreset::ActionButtonHelp, "actionButtonHelp"),
-    (ShapePreset::ActionButtonInformation, "actionButtonInformation"),
-    (ShapePreset::ActionButtonBackPrevious, "actionButtonBackPrevious"),
-    (ShapePreset::ActionButtonForwardNext, "actionButtonForwardNext"),
+    (
+        ShapePreset::ActionButtonInformation,
+        "actionButtonInformation",
+    ),
+    (
+        ShapePreset::ActionButtonBackPrevious,
+        "actionButtonBackPrevious",
+    ),
+    (
+        ShapePreset::ActionButtonForwardNext,
+        "actionButtonForwardNext",
+    ),
     (ShapePreset::ActionButtonBeginning, "actionButtonBeginning"),
     (ShapePreset::ActionButtonEnd, "actionButtonEnd"),
     (ShapePreset::ActionButtonReturn, "actionButtonReturn"),
@@ -636,9 +675,18 @@ mod tests {
         assert_eq!(ShapePreset::RtTriangle.prst_name(), "rtTriangle");
         assert_eq!(ShapePreset::Star5.prst_name(), "star5");
         assert_eq!(ShapePreset::RightArrow.prst_name(), "rightArrow");
-        assert_eq!(ShapePreset::FlowChartProcess.prst_name(), "flowChartProcess");
-        assert_eq!(ShapePreset::WedgeRectCallout.prst_name(), "wedgeRectCallout");
-        assert_eq!(ShapePreset::ActionButtonHome.prst_name(), "actionButtonHome");
+        assert_eq!(
+            ShapePreset::FlowChartProcess.prst_name(),
+            "flowChartProcess"
+        );
+        assert_eq!(
+            ShapePreset::WedgeRectCallout.prst_name(),
+            "wedgeRectCallout"
+        );
+        assert_eq!(
+            ShapePreset::ActionButtonHome.prst_name(),
+            "actionButtonHome"
+        );
         assert_eq!(ShapePreset::Gear6.prst_name(), "gear6");
     }
 
@@ -672,22 +720,43 @@ mod tests {
         assert_eq!(ShapePreset::parse("oval"), Some(ShapePreset::Ellipse));
         assert_eq!(ShapePreset::parse("circle"), Some(ShapePreset::Ellipse));
         assert_eq!(ShapePreset::parse("arrow"), Some(ShapePreset::RightArrow));
-        assert_eq!(ShapePreset::parse("callout"), Some(ShapePreset::WedgeRectCallout));
-        assert_eq!(ShapePreset::parse("roundedRectangle"), Some(ShapePreset::RoundRect));
+        assert_eq!(
+            ShapePreset::parse("callout"),
+            Some(ShapePreset::WedgeRectCallout)
+        );
+        assert_eq!(
+            ShapePreset::parse("roundedRectangle"),
+            Some(ShapePreset::RoundRect)
+        );
         // python-pptx MSO_SHAPE aliases
-        assert_eq!(ShapePreset::parse("explosion1"), Some(ShapePreset::IrregularSeal1));
-        assert_eq!(ShapePreset::parse("explosion2"), Some(ShapePreset::IrregularSeal2));
+        assert_eq!(
+            ShapePreset::parse("explosion1"),
+            Some(ShapePreset::IrregularSeal1)
+        );
+        assert_eq!(
+            ShapePreset::parse("explosion2"),
+            Some(ShapePreset::IrregularSeal2)
+        );
         assert_eq!(ShapePreset::parse("5_point_star"), Some(ShapePreset::Star5));
         assert_eq!(ShapePreset::parse("textBox"), Some(ShapePreset::Rect));
         assert_eq!(ShapePreset::parse("cross_shape"), Some(ShapePreset::Plus));
-        assert_eq!(ShapePreset::parse("no_symbol"), Some(ShapePreset::NoSmoking));
+        assert_eq!(
+            ShapePreset::parse("no_symbol"),
+            Some(ShapePreset::NoSmoking)
+        );
     }
 
     #[test]
     fn parse_case_insensitive() {
         assert_eq!(ShapePreset::parse("RECT"), Some(ShapePreset::Rect));
-        assert_eq!(ShapePreset::parse("RoundRect"), Some(ShapePreset::RoundRect));
-        assert_eq!(ShapePreset::parse("flowchartprocess"), Some(ShapePreset::FlowChartProcess));
+        assert_eq!(
+            ShapePreset::parse("RoundRect"),
+            Some(ShapePreset::RoundRect)
+        );
+        assert_eq!(
+            ShapePreset::parse("flowchartprocess"),
+            Some(ShapePreset::FlowChartProcess)
+        );
     }
 
     #[test]

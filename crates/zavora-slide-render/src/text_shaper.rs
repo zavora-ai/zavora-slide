@@ -74,10 +74,7 @@ impl TextShaper {
         let families = if family.is_empty() {
             vec![fontdb::Family::SansSerif]
         } else {
-            vec![
-                fontdb::Family::Name(family),
-                fontdb::Family::SansSerif,
-            ]
+            vec![fontdb::Family::Name(family), fontdb::Family::SansSerif]
         };
 
         let query = fontdb::Query {
@@ -91,7 +88,14 @@ impl TextShaper {
     }
 
     /// Measure the width of a text string in pixels at the given font size.
-    pub fn measure_text(&self, text: &str, font_size_px: f64, bold: bool, italic: bool, family: &str) -> f64 {
+    pub fn measure_text(
+        &self,
+        text: &str,
+        font_size_px: f64,
+        bold: bool,
+        italic: bool,
+        family: &str,
+    ) -> f64 {
         if text.is_empty() {
             return 0.0;
         }
@@ -101,23 +105,25 @@ impl TextShaper {
             None => return text.len() as f64 * font_size_px * 0.55, // fallback estimate
         };
 
-        self.db.with_face_data(face_id, |font_data, face_index| {
-            let face = match rustybuzz::Face::from_slice(font_data, face_index) {
-                Some(f) => f,
-                None => return text.len() as f64 * font_size_px * 0.55,
-            };
+        self.db
+            .with_face_data(face_id, |font_data, face_index| {
+                let face = match rustybuzz::Face::from_slice(font_data, face_index) {
+                    Some(f) => f,
+                    None => return text.len() as f64 * font_size_px * 0.55,
+                };
 
-            let units_per_em = face.units_per_em() as f64;
-            let scale = font_size_px / units_per_em;
+                let units_per_em = face.units_per_em() as f64;
+                let scale = font_size_px / units_per_em;
 
-            let mut buffer = rustybuzz::UnicodeBuffer::new();
-            buffer.push_str(text);
+                let mut buffer = rustybuzz::UnicodeBuffer::new();
+                buffer.push_str(text);
 
-            let glyphs = rustybuzz::shape(&face, &[], buffer);
-            let total_advance: i32 = glyphs.glyph_positions().iter().map(|p| p.x_advance).sum();
+                let glyphs = rustybuzz::shape(&face, &[], buffer);
+                let total_advance: i32 = glyphs.glyph_positions().iter().map(|p| p.x_advance).sum();
 
-            total_advance as f64 * scale
-        }).unwrap_or(text.len() as f64 * font_size_px * 0.55)
+                total_advance as f64 * scale
+            })
+            .unwrap_or(text.len() as f64 * font_size_px * 0.55)
     }
 
     /// Perform word-wrapping based on measured glyph widths.
@@ -246,10 +252,7 @@ impl TextShaper {
                 family,
             );
 
-            let color_hex = format!(
-                "#{:02X}{:02X}{:02X}",
-                ln.color.r, ln.color.g, ln.color.b
-            );
+            let color_hex = format!("#{:02X}{:02X}{:02X}", ln.color.r, ln.color.g, ln.color.b);
 
             // Space before (only for paragraph starts).
             let space_before = if ln.is_paragraph_start {
@@ -265,7 +268,11 @@ impl TextShaper {
                 let base_x = frame_x + indent_px;
                 let x = match ln.alignment {
                     Alignment::Left => {
-                        if k == 0 { base_x } else { base_x + font_px }
+                        if k == 0 {
+                            base_x
+                        } else {
+                            base_x + font_px
+                        }
                     }
                     Alignment::Center => {
                         let remaining = available_width - seg_width;
@@ -276,7 +283,11 @@ impl TextShaper {
                         base_x + remaining.max(0.0)
                     }
                     Alignment::Justify => {
-                        if k == 0 { base_x } else { base_x + font_px }
+                        if k == 0 {
+                            base_x
+                        } else {
+                            base_x + font_px
+                        }
                     }
                 };
 
@@ -345,7 +356,10 @@ mod tests {
     fn measure_text_nonzero() {
         let shaper = TextShaper::new();
         let width = shaper.measure_text("Hello World", 20.0, false, false, "Liberation Sans");
-        assert!(width > 0.0, "measured width should be positive, got {width}");
+        assert!(
+            width > 0.0,
+            "measured width should be positive, got {width}"
+        );
     }
 
     #[test]
@@ -353,7 +367,10 @@ mod tests {
         let shaper = TextShaper::new();
         let short = shaper.measure_text("Hi", 20.0, false, false, "Liberation Sans");
         let long = shaper.measure_text("Hello World", 20.0, false, false, "Liberation Sans");
-        assert!(long > short, "longer text should be wider: {long} vs {short}");
+        assert!(
+            long > short,
+            "longer text should be wider: {long} vs {short}"
+        );
     }
 
     #[test]
@@ -375,7 +392,10 @@ mod tests {
             false,
             "Liberation Sans",
         );
-        assert!(lines.len() > 1, "should wrap into multiple lines, got {lines:?}");
+        assert!(
+            lines.len() > 1,
+            "should wrap into multiple lines, got {lines:?}"
+        );
         // Each line should contain complete words (no mid-word breaks).
         for line in &lines {
             for word in line.split_whitespace() {
@@ -433,7 +453,11 @@ mod tests {
         let shaped = shaper.shape_text_frame(&lines, &props, 100.0, 50.0, 400.0, 200.0, 1.0);
         assert!(!shaped.is_empty());
         // Center-aligned: x should be > frame_x (shifted right).
-        assert!(shaped[0].x > 100.0, "center x should be > frame_x, got {}", shaped[0].x);
+        assert!(
+            shaped[0].x > 100.0,
+            "center x should be > frame_x, got {}",
+            shaped[0].x
+        );
         // And less than frame_x + frame_w.
         assert!(shaped[0].x < 500.0);
     }
@@ -452,7 +476,11 @@ mod tests {
         let shaped = shaper.shape_text_frame(&lines, &props, 100.0, 50.0, 400.0, 200.0, 1.0);
         assert!(!shaped.is_empty());
         // Right-aligned: x should be significantly > frame_x.
-        assert!(shaped[0].x > 200.0, "right x should be well past frame_x, got {}", shaped[0].x);
+        assert!(
+            shaped[0].x > 200.0,
+            "right x should be well past frame_x, got {}",
+            shaped[0].x
+        );
     }
 
     #[test]
@@ -464,12 +492,20 @@ mod tests {
             is_paragraph_start: true,
             ..TextLine::default()
         }];
-        let props = TextFrameProps { anchor: VerticalAnchor::Top, font_scale: 1.0 };
+        let props = TextFrameProps {
+            anchor: VerticalAnchor::Top,
+            font_scale: 1.0,
+        };
         let shaped = shaper.shape_text_frame(&lines, &props, 0.0, 100.0, 400.0, 400.0, 1.0);
         assert!(!shaped.is_empty());
         // Top anchor: first line y should be near frame_y + line_height.
         let expected_y = 100.0 + 18.0; // frame_y + font_size * line_spacing(1.0)
-        assert!((shaped[0].y - expected_y).abs() < 1.0, "y={}, expected ~{}", shaped[0].y, expected_y);
+        assert!(
+            (shaped[0].y - expected_y).abs() < 1.0,
+            "y={}, expected ~{}",
+            shaped[0].y,
+            expected_y
+        );
     }
 
     #[test]
@@ -481,13 +517,24 @@ mod tests {
             is_paragraph_start: true,
             ..TextLine::default()
         }];
-        let props = TextFrameProps { anchor: VerticalAnchor::Middle, font_scale: 1.0 };
+        let props = TextFrameProps {
+            anchor: VerticalAnchor::Middle,
+            font_scale: 1.0,
+        };
         let shaped = shaper.shape_text_frame(&lines, &props, 0.0, 0.0, 400.0, 400.0, 1.0);
         assert!(!shaped.is_empty());
         // Middle anchor: text should be roughly centered.
         // Total height = 18px, so offset = (400 - 18) / 2 = 191.
-        assert!(shaped[0].y > 150.0, "middle y should be > 150, got {}", shaped[0].y);
-        assert!(shaped[0].y < 250.0, "middle y should be < 250, got {}", shaped[0].y);
+        assert!(
+            shaped[0].y > 150.0,
+            "middle y should be > 150, got {}",
+            shaped[0].y
+        );
+        assert!(
+            shaped[0].y < 250.0,
+            "middle y should be < 250, got {}",
+            shaped[0].y
+        );
     }
 
     #[test]
@@ -499,11 +546,18 @@ mod tests {
             is_paragraph_start: true,
             ..TextLine::default()
         }];
-        let props = TextFrameProps { anchor: VerticalAnchor::Bottom, font_scale: 1.0 };
+        let props = TextFrameProps {
+            anchor: VerticalAnchor::Bottom,
+            font_scale: 1.0,
+        };
         let shaped = shaper.shape_text_frame(&lines, &props, 0.0, 0.0, 400.0, 400.0, 1.0);
         assert!(!shaped.is_empty());
         // Bottom anchor: text should be near the bottom.
-        assert!(shaped[0].y > 350.0, "bottom y should be > 350, got {}", shaped[0].y);
+        assert!(
+            shaped[0].y > 350.0,
+            "bottom y should be > 350, got {}",
+            shaped[0].y
+        );
     }
 
     #[test]
@@ -515,8 +569,14 @@ mod tests {
             is_paragraph_start: true,
             ..TextLine::default()
         }];
-        let props_full = TextFrameProps { anchor: VerticalAnchor::Top, font_scale: 1.0 };
-        let props_half = TextFrameProps { anchor: VerticalAnchor::Top, font_scale: 0.5 };
+        let props_full = TextFrameProps {
+            anchor: VerticalAnchor::Top,
+            font_scale: 1.0,
+        };
+        let props_half = TextFrameProps {
+            anchor: VerticalAnchor::Top,
+            font_scale: 0.5,
+        };
 
         let shaped_full = shaper.shape_text_frame(&lines, &props_full, 0.0, 0.0, 400.0, 400.0, 1.0);
         let shaped_half = shaper.shape_text_frame(&lines, &props_half, 0.0, 0.0, 400.0, 400.0, 1.0);
@@ -525,6 +585,9 @@ mod tests {
         assert!(!shaped_half.is_empty());
         // Half scale should produce half the font size.
         let ratio = shaped_half[0].font_size_px / shaped_full[0].font_size_px;
-        assert!((ratio - 0.5).abs() < 0.01, "ratio should be ~0.5, got {ratio}");
+        assert!(
+            (ratio - 0.5).abs() < 0.01,
+            "ratio should be ~0.5, got {ratio}"
+        );
     }
 }

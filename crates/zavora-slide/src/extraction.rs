@@ -207,10 +207,7 @@ pub fn to_markdown(presentation: &Presentation) -> String {
                     for r in 1..*rows {
                         out.push('|');
                         for c in 0..*cols {
-                            let cell = cells
-                                .get(r * cols + c)
-                                .map(String::as_str)
-                                .unwrap_or("");
+                            let cell = cells.get(r * cols + c).map(String::as_str).unwrap_or("");
                             out.push_str(&format!(" {} |", cell));
                         }
                         out.push('\n');
@@ -256,7 +253,11 @@ mod tests {
             s.set_title("Hello World").unwrap();
             s.add_bullets(&[
                 Bullet::new("First point"),
-                Bullet { text: "Sub point".into(), level: 1, bold: false },
+                Bullet {
+                    text: "Sub point".into(),
+                    level: 1,
+                    bold: false,
+                },
                 Bullet::new("Second point"),
             ])
             .unwrap();
@@ -272,15 +273,24 @@ mod tests {
         assert_eq!(slide.elements.len(), 3);
         assert_eq!(
             slide.elements[0],
-            OutlineElement::Paragraph { text: "First point".into(), level: 0 }
+            OutlineElement::Paragraph {
+                text: "First point".into(),
+                level: 0
+            }
         );
         assert_eq!(
             slide.elements[1],
-            OutlineElement::Paragraph { text: "Sub point".into(), level: 1 }
+            OutlineElement::Paragraph {
+                text: "Sub point".into(),
+                level: 1
+            }
         );
         assert_eq!(
             slide.elements[2],
-            OutlineElement::Paragraph { text: "Second point".into(), level: 0 }
+            OutlineElement::Paragraph {
+                text: "Second point".into(),
+                level: 0
+            }
         );
     }
 
@@ -294,7 +304,10 @@ mod tests {
             s.set_notes("Speaker notes here");
         }
         let outline = to_outline(&p);
-        assert_eq!(outline.slides[0].notes.as_deref(), Some("Speaker notes here"));
+        assert_eq!(
+            outline.slides[0].notes.as_deref(),
+            Some("Speaker notes here")
+        );
     }
 
     #[test]
@@ -315,7 +328,10 @@ mod tests {
         let slide = &outline.slides[0];
 
         // Find the table element
-        let table_el = slide.elements.iter().find(|e| matches!(e, OutlineElement::Table { .. }));
+        let table_el = slide
+            .elements
+            .iter()
+            .find(|e| matches!(e, OutlineElement::Table { .. }));
         assert!(table_el.is_some());
         match table_el.unwrap() {
             OutlineElement::Table { rows, cols, cells } => {
@@ -333,7 +349,13 @@ mod tests {
         p.add_slide(Layout::TitleContent);
         {
             let mut s = p.slide_mut(0).unwrap();
-            s.add_text_box("Extra info", Emu(100000), Emu(100000), Emu(2000000), Emu(500000));
+            s.add_text_box(
+                "Extra info",
+                Emu(100000),
+                Emu(100000),
+                Emu(2000000),
+                Emu(500000),
+            );
         }
         let outline = to_outline(&p);
         let slide = &outline.slides[0];
@@ -406,13 +428,20 @@ mod tests {
             s.set_title("Hello World").unwrap();
             s.add_bullets(&[
                 Bullet::new("First point"),
-                Bullet { text: "Sub point".into(), level: 1, bold: false },
+                Bullet {
+                    text: "Sub point".into(),
+                    level: 1,
+                    bold: false,
+                },
                 Bullet::new("Second point"),
             ])
             .unwrap();
         }
         let md = to_markdown(&p);
-        assert!(md.contains("## Slide 1: Hello World"), "slide header with title");
+        assert!(
+            md.contains("## Slide 1: Hello World"),
+            "slide header with title"
+        );
         assert!(md.contains("- First point"), "top-level bullet");
         assert!(md.contains("  - Sub point"), "indented bullet");
         assert!(md.contains("- Second point"), "second top-level bullet");
@@ -523,10 +552,19 @@ mod tests {
         p.add_slide(Layout::TitleContent);
         {
             let mut s = p.slide_mut(0).unwrap();
-            s.add_text_box("Extra info", Emu(100000), Emu(100000), Emu(2000000), Emu(500000));
+            s.add_text_box(
+                "Extra info",
+                Emu(100000),
+                Emu(100000),
+                Emu(2000000),
+                Emu(500000),
+            );
         }
         let md = to_markdown(&p);
-        assert!(md.contains("**textbox:** Extra info"), "shape text with label");
+        assert!(
+            md.contains("**textbox:** Extra info"),
+            "shape text with label"
+        );
     }
 
     #[test]

@@ -79,7 +79,11 @@ pub(crate) fn apply_core_properties(xml: &[u8], props: &CoreProperties) -> Vec<u
         (&props.category, b"category", b"cp:category"),
         (&props.created, b"created", b"dcterms:created"),
         (&props.modified, b"modified", b"dcterms:modified"),
-        (&props.last_modified_by, b"lastModifiedBy", b"cp:lastModifiedBy"),
+        (
+            &props.last_modified_by,
+            b"lastModifiedBy",
+            b"cp:lastModifiedBy",
+        ),
     ];
 
     for (value, local_name, qualified_name) in fields {

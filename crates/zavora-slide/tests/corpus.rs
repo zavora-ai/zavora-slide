@@ -40,7 +40,11 @@ fn opened_slides_carry_byte_faithful_dom() {
     let pkg = OpcPackage::open(SAMPLE).unwrap();
     for i in 0..p.slide_count() {
         let (part, dom_bytes) = p.slide_dom_debug(i).expect("opened slide has a DOM");
-        assert_eq!(dom_bytes, pkg.get_part(&part).unwrap(), "DOM faithful for {part}");
+        assert_eq!(
+            dom_bytes,
+            pkg.get_part(&part).unwrap(),
+            "DOM faithful for {part}"
+        );
     }
 }
 
@@ -86,7 +90,10 @@ fn high_level_open_save_is_faithful() {
     let p = Presentation::open(SAMPLE).unwrap();
     let orig = package_entries(&OpcPackage::open(SAMPLE).unwrap());
     let resaved = package_entries(&reopen(p.save_to_buffer().unwrap()));
-    assert_eq!(orig, resaved, "unedited open->save is byte-identical for all entries");
+    assert_eq!(
+        orig, resaved,
+        "unedited open->save is byte-identical for all entries"
+    );
 }
 
 #[test]
@@ -114,14 +121,25 @@ fn editing_is_surgical_dom_based() {
         .keys()
         .filter(|k| orig.get(*k) != out.get(*k))
         .collect();
-    assert_eq!(diffs, vec!["/ppt/slides/slide1.xml"], "only the edited slide changes");
-    assert_eq!(orig.keys().collect::<Vec<_>>(), out.keys().collect::<Vec<_>>(), "no entries added/removed");
+    assert_eq!(
+        diffs,
+        vec!["/ppt/slides/slide1.xml"],
+        "only the edited slide changes"
+    );
+    assert_eq!(
+        orig.keys().collect::<Vec<_>>(),
+        out.keys().collect::<Vec<_>>(),
+        "no entries added/removed"
+    );
 
     // New title present; the subtitle shape on slide 1 is preserved verbatim.
     let s1 = String::from_utf8(out["/ppt/slides/slide1.xml"].clone()).unwrap();
     assert!(s1.contains("Edited Title"), "new title in edited slide");
     assert!(!s1.contains("Corpus Sample"), "old title gone");
-    assert!(s1.contains("Authored by python-pptx"), "subtitle preserved verbatim");
+    assert!(
+        s1.contains("Authored by python-pptx"),
+        "subtitle preserved verbatim"
+    );
 }
 
 #[test]
@@ -137,10 +155,20 @@ fn add_text_box_to_opened_slide_is_surgical() {
     );
     let orig = package_entries(&OpcPackage::open(SAMPLE).unwrap());
     let out = package_entries(&reopen(p.save_to_buffer().unwrap()));
-    let diffs: Vec<&String> = orig.keys().filter(|k| orig.get(*k) != out.get(*k)).collect();
-    assert_eq!(diffs, vec!["/ppt/slides/slide1.xml"], "only edited slide changes");
+    let diffs: Vec<&String> = orig
+        .keys()
+        .filter(|k| orig.get(*k) != out.get(*k))
+        .collect();
+    assert_eq!(
+        diffs,
+        vec!["/ppt/slides/slide1.xml"],
+        "only edited slide changes"
+    );
     let s1 = String::from_utf8(out["/ppt/slides/slide1.xml"].clone()).unwrap();
-    assert!(s1.contains("<a:t>Inserted box</a:t>"), "new box present: {s1}");
+    assert!(
+        s1.contains("<a:t>Inserted box</a:t>"),
+        "new box present: {s1}"
+    );
     assert!(s1.contains("Corpus Sample"), "original title preserved");
 }
 
@@ -161,12 +189,18 @@ fn duplicate_slide_is_faithful() {
         if name == "/ppt/presentation.xml" {
             continue;
         }
-        assert_eq!(orig.get_part(name), out.get_part(name), "part {name} preserved");
+        assert_eq!(
+            orig.get_part(name),
+            out.get_part(name),
+            "part {name} preserved"
+        );
     }
     // A new slide part exists and equals the duplicated original's bytes.
     let extra: Vec<&str> = out
         .part_names()
-        .filter(|n| n.starts_with("/ppt/slides/slide") && n.ends_with(".xml") && orig.get_part(n).is_none())
+        .filter(|n| {
+            n.starts_with("/ppt/slides/slide") && n.ends_with(".xml") && orig.get_part(n).is_none()
+        })
         .collect();
     assert_eq!(extra.len(), 1, "exactly one new slide part");
     assert_eq!(
@@ -195,11 +229,16 @@ fn move_slide_is_faithful() {
         if name == "/ppt/presentation.xml" {
             continue;
         }
-        assert_eq!(orig.get_part(name), out.get_part(name), "part {name} byte-preserved");
+        assert_eq!(
+            orig.get_part(name),
+            out.get_part(name),
+            "part {name} byte-preserved"
+        );
     }
     // sldIdLst order changed; the three sldId entries are reordered, not renumbered.
     let pres = String::from_utf8(out.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
-    let orig_pres = String::from_utf8(orig.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
+    let orig_pres =
+        String::from_utf8(orig.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
     assert_ne!(pres, orig_pres, "sldIdLst reordered");
     // Same set of r:id values present (just reordered).
     let count = |s: &str| s.matches("<p:sldId ").count();
@@ -217,7 +256,10 @@ fn delete_slide_is_faithful() {
 
     assert_eq!(p.slide_count(), 2);
     // The deleted slide's part is gone; the others remain byte-identical.
-    assert!(out.get_part("/ppt/slides/slide2.xml").is_none(), "deleted part pruned");
+    assert!(
+        out.get_part("/ppt/slides/slide2.xml").is_none(),
+        "deleted part pruned"
+    );
     assert_eq!(
         orig.get_part("/ppt/slides/slide1.xml"),
         out.get_part("/ppt/slides/slide1.xml"),
@@ -230,13 +272,20 @@ fn delete_slide_is_faithful() {
     );
     // Master/layouts/theme untouched.
     for name in orig.part_names() {
-        if name.contains("/slideMasters/") || name.contains("/slideLayouts/") || name.contains("/theme/") {
+        if name.contains("/slideMasters/")
+            || name.contains("/slideLayouts/")
+            || name.contains("/theme/")
+        {
             assert_eq!(orig.get_part(name), out.get_part(name), "{name} preserved");
         }
     }
     // presentation rels no longer reference the deleted slide.
     let prels = out.get_part_rels("/ppt/presentation.xml").unwrap();
-    let slide_rels = prels.items.iter().filter(|r| r.target.contains("slides/slide")).count();
+    let slide_rels = prels
+        .items
+        .iter()
+        .filter(|r| r.target.contains("slides/slide"))
+        .count();
     assert_eq!(slide_rels, 2, "one slide rel pruned");
 }
 
@@ -250,24 +299,35 @@ fn add_slide_is_faithful() {
     let out = reopen(p.save_to_buffer().unwrap());
 
     // All 11 original layouts survive.
-    let layouts = out.part_names().filter(|n| n.contains("/slideLayouts/slideLayout")).count();
+    let layouts = out
+        .part_names()
+        .filter(|n| n.contains("/slideLayouts/slideLayout"))
+        .count();
     assert_eq!(layouts, 11, "original layouts preserved");
     // Master/layouts/theme/original slides byte-identical.
     for name in orig.part_names() {
         if name == "/ppt/presentation.xml" {
             continue;
         }
-        assert_eq!(orig.get_part(name), out.get_part(name), "part {name} preserved");
+        assert_eq!(
+            orig.get_part(name),
+            out.get_part(name),
+            "part {name} preserved"
+        );
     }
     // A new blank slide part exists and binds to an existing layout.
     let extra: Vec<&str> = out
         .part_names()
-        .filter(|n| n.starts_with("/ppt/slides/slide") && n.ends_with(".xml") && orig.get_part(n).is_none())
+        .filter(|n| {
+            n.starts_with("/ppt/slides/slide") && n.ends_with(".xml") && orig.get_part(n).is_none()
+        })
         .collect();
     assert_eq!(extra.len(), 1, "one new slide part");
     let rels = out.get_part_rels(extra[0]).unwrap();
     assert!(
-        rels.items.iter().any(|r| r.target.contains("slideLayouts/slideLayout")),
+        rels.items
+            .iter()
+            .any(|r| r.target.contains("slideLayouts/slideLayout")),
         "new slide bound to an existing layout"
     );
     // presentation now lists 4 slides.

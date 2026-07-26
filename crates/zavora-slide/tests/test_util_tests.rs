@@ -34,7 +34,9 @@ fn package_entries_includes_parts_rels_and_content_types() {
         entries.contains_key("rels::PACKAGE"),
         "should contain package rels"
     );
-    let has_part_rels = entries.keys().any(|k| k.starts_with("rels::") && k != "rels::PACKAGE");
+    let has_part_rels = entries
+        .keys()
+        .any(|k| k.starts_with("rels::") && k != "rels::PACKAGE");
     assert!(has_part_rels, "should contain at least one part-level rels");
 
     // Must contain content types.

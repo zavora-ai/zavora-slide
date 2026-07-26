@@ -92,8 +92,14 @@ fn unset_properties_preserve_existing_values_on_opened_deck() {
     assert_eq!(final_props.comments.as_deref(), Some("Original Comment"));
     assert_eq!(final_props.category.as_deref(), Some("Original Category"));
     assert_eq!(final_props.created.as_deref(), Some("2024-01-01T00:00:00Z"));
-    assert_eq!(final_props.modified.as_deref(), Some("2024-01-01T00:00:00Z"));
-    assert_eq!(final_props.last_modified_by.as_deref(), Some("Original Editor"));
+    assert_eq!(
+        final_props.modified.as_deref(),
+        Some("2024-01-01T00:00:00Z")
+    );
+    assert_eq!(
+        final_props.last_modified_by.as_deref(),
+        Some("Original Editor")
+    );
 }
 
 #[test]

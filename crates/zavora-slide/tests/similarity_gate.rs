@@ -24,7 +24,7 @@
 
 mod test_util;
 
-use test_util::similarity::{compare_pngs, render_with_libreoffice, SIMILARITY_THRESHOLD};
+use test_util::similarity::{SIMILARITY_THRESHOLD, compare_pngs, render_with_libreoffice};
 use zavora_slide::{Presentation, RenderFormat};
 
 const SAMPLE: &str = "tests/corpus/powerpoint_sample.pptx";
@@ -61,9 +61,7 @@ fn libreoffice_similarity_gate_slide_0() {
         }
         Some(Ok(lo_png)) => {
             let score = compare_pngs(&our_png, &lo_png);
-            eprintln!(
-                "Similarity score (slide 0): {score:.4} (threshold: {SIMILARITY_THRESHOLD})"
-            );
+            eprintln!("Similarity score (slide 0): {score:.4} (threshold: {SIMILARITY_THRESHOLD})");
             assert!(
                 score >= SIMILARITY_THRESHOLD,
                 "Similarity score {score:.4} is below threshold {SIMILARITY_THRESHOLD}. \

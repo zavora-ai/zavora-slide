@@ -53,8 +53,8 @@ pub fn scenes_to_pdf(scenes: &[Scene]) -> Result<Vec<u8>, PdfError> {
             db.set_sans_serif_family("Liberation Sans");
         }
         let tree = usvg::Tree::from_str(&svg, &opt).map_err(|e| PdfError::Svg(e.to_string()))?;
-        let (chunk, root) =
-            svg2pdf::to_chunk(&tree, svg2pdf::ConversionOptions::default()).map_err(|_| PdfError::Convert)?;
+        let (chunk, root) = svg2pdf::to_chunk(&tree, svg2pdf::ConversionOptions::default())
+            .map_err(|_| PdfError::Convert)?;
 
         // Renumber the SVG chunk into our id space.
         let mut map = HashMap::new();
@@ -65,11 +65,19 @@ pub fn scenes_to_pdf(scenes: &[Scene]) -> Result<Vec<u8>, PdfError> {
         let page_id = alloc.bump();
         let content_id = alloc.bump();
         page_ids.push(page_id);
-        plans.push(PagePlan { page_id, content_id, svg_ref, w_pt, h_pt });
+        plans.push(PagePlan {
+            page_id,
+            content_id,
+            svg_ref,
+            w_pt,
+            h_pt,
+        });
     }
 
     pdf.catalog(catalog_id).pages(page_tree_id);
-    pdf.pages(page_tree_id).kids(page_ids.iter().copied()).count(page_ids.len() as i32);
+    pdf.pages(page_tree_id)
+        .kids(page_ids.iter().copied())
+        .count(page_ids.len() as i32);
 
     let svg_name = Name(b"S1");
     for p in &plans {
@@ -82,7 +90,9 @@ pub fn scenes_to_pdf(scenes: &[Scene]) -> Result<Vec<u8>, PdfError> {
 
         // The XObject is 1pt×1pt; scale it to the full page.
         let mut content = Content::new();
-        content.transform([p.w_pt, 0.0, 0.0, p.h_pt, 0.0, 0.0]).x_object(svg_name);
+        content
+            .transform([p.w_pt, 0.0, 0.0, p.h_pt, 0.0, 0.0])
+            .x_object(svg_name);
         pdf.stream(p.content_id, &content.finish());
     }
 
@@ -97,8 +107,22 @@ mod tests {
     fn scene() -> Scene {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Text {
-            rect: LRect { x: 914400, y: 457200, w: 9000000, h: 914400 },
-            lines: vec![TextLine { text: "Page".into(), size_pt: 32.0, color: Color::BLACK, bold: true, italic: false, level: 0, is_paragraph_start: true, ..TextLine::default() }],
+            rect: LRect {
+                x: 914400,
+                y: 457200,
+                w: 9000000,
+                h: 914400,
+            },
+            lines: vec![TextLine {
+                text: "Page".into(),
+                size_pt: 32.0,
+                color: Color::BLACK,
+                bold: true,
+                italic: false,
+                level: 0,
+                is_paragraph_start: true,
+                ..TextLine::default()
+            }],
             props: TextFrameProps::default(),
         });
         s

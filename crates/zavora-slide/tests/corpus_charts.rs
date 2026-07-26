@@ -31,7 +31,14 @@ fn deck_with_chart(kind: ChartKind, title: Option<&str>) -> Vec<u8> {
     {
         let mut slide = p.slide_mut(0).unwrap();
         slide
-            .add_chart(&spec, Emu(914400), Emu(914400), Emu(7315200), Emu(4572000), 1)
+            .add_chart(
+                &spec,
+                Emu(914400),
+                Emu(914400),
+                Emu(7315200),
+                Emu(4572000),
+                1,
+            )
             .unwrap();
     }
     p.save_to_buffer().unwrap()
@@ -52,7 +59,8 @@ fn embedded_workbook_exists_in_package() {
     let bytes = deck_with_chart(ChartKind::ClusteredBar, None);
     let pkg = OpcPackage::from_reader(Cursor::new(bytes)).unwrap();
     assert!(
-        pkg.get_part("/ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx").is_some(),
+        pkg.get_part("/ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx")
+            .is_some(),
         "embedded workbook should exist"
     );
 }
@@ -63,7 +71,10 @@ fn chart_xml_has_bar_chart_with_correct_bar_dir_and_grouping() {
     let pkg = OpcPackage::from_reader(Cursor::new(bytes)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:barChart>"), "should contain c:barChart");
+    assert!(
+        chart_xml.contains("<c:barChart>"),
+        "should contain c:barChart"
+    );
     assert!(
         chart_xml.contains("barDir val=\"bar\""),
         "clustered bar should have barDir=bar"
@@ -97,20 +108,50 @@ fn chart_xml_contains_categories_and_series_data() {
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
     // Categories.
-    assert!(chart_xml.contains("<c:v>Q1</c:v>"), "should contain category Q1");
-    assert!(chart_xml.contains("<c:v>Q2</c:v>"), "should contain category Q2");
-    assert!(chart_xml.contains("<c:v>Q3</c:v>"), "should contain category Q3");
-    assert!(chart_xml.contains("<c:v>Q4</c:v>"), "should contain category Q4");
+    assert!(
+        chart_xml.contains("<c:v>Q1</c:v>"),
+        "should contain category Q1"
+    );
+    assert!(
+        chart_xml.contains("<c:v>Q2</c:v>"),
+        "should contain category Q2"
+    );
+    assert!(
+        chart_xml.contains("<c:v>Q3</c:v>"),
+        "should contain category Q3"
+    );
+    assert!(
+        chart_xml.contains("<c:v>Q4</c:v>"),
+        "should contain category Q4"
+    );
 
     // Series names.
-    assert!(chart_xml.contains("<c:v>Revenue</c:v>"), "should contain series name Revenue");
-    assert!(chart_xml.contains("<c:v>Costs</c:v>"), "should contain series name Costs");
+    assert!(
+        chart_xml.contains("<c:v>Revenue</c:v>"),
+        "should contain series name Revenue"
+    );
+    assert!(
+        chart_xml.contains("<c:v>Costs</c:v>"),
+        "should contain series name Costs"
+    );
 
     // Series values.
-    assert!(chart_xml.contains("<c:v>100</c:v>"), "should contain value 100");
-    assert!(chart_xml.contains("<c:v>150</c:v>"), "should contain value 150");
-    assert!(chart_xml.contains("<c:v>80</c:v>"), "should contain value 80");
-    assert!(chart_xml.contains("<c:v>95</c:v>"), "should contain value 95");
+    assert!(
+        chart_xml.contains("<c:v>100</c:v>"),
+        "should contain value 100"
+    );
+    assert!(
+        chart_xml.contains("<c:v>150</c:v>"),
+        "should contain value 150"
+    );
+    assert!(
+        chart_xml.contains("<c:v>80</c:v>"),
+        "should contain value 80"
+    );
+    assert!(
+        chart_xml.contains("<c:v>95</c:v>"),
+        "should contain value 95"
+    );
 }
 
 #[test]
@@ -131,7 +172,10 @@ fn chart_xml_has_title_when_specified() {
     let pkg = OpcPackage::from_reader(Cursor::new(bytes)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:title>"), "should contain title element");
+    assert!(
+        chart_xml.contains("<c:title>"),
+        "should contain title element"
+    );
     assert!(
         chart_xml.contains("<a:t>Sales Report</a:t>"),
         "should contain title text"
@@ -148,7 +192,8 @@ fn embedded_workbook_is_valid_xlsx() {
 
     // Should be a valid ZIP archive.
     let cursor = Cursor::new(xlsx_bytes);
-    let mut archive = zip::ZipArchive::new(cursor).expect("embedded workbook should be a valid ZIP");
+    let mut archive =
+        zip::ZipArchive::new(cursor).expect("embedded workbook should be a valid ZIP");
 
     // Should contain the standard xlsx parts.
     assert!(archive.by_name("xl/worksheets/sheet1.xml").is_ok());
@@ -158,8 +203,14 @@ fn embedded_workbook_is_valid_xlsx() {
     let mut sheet = archive.by_name("xl/worksheets/sheet1.xml").unwrap();
     let mut sheet_xml = String::new();
     std::io::Read::read_to_string(&mut sheet, &mut sheet_xml).unwrap();
-    assert!(sheet_xml.contains("<v>100</v>"), "sheet should contain value 100");
-    assert!(sheet_xml.contains("<v>150</v>"), "sheet should contain value 150");
+    assert!(
+        sheet_xml.contains("<v>100</v>"),
+        "sheet should contain value 100"
+    );
+    assert!(
+        sheet_xml.contains("<v>150</v>"),
+        "sheet should contain value 150"
+    );
 }
 
 #[test]
@@ -211,7 +262,9 @@ fn chart_to_workbook_relationship_exists() {
         .get_part_rels("/ppt/charts/chart1.xml")
         .expect("chart should have relationships");
 
-    let wb_rel = rels.get_by_id("rId1").expect("should have rId1 for workbook");
+    let wb_rel = rels
+        .get_by_id("rId1")
+        .expect("should have rId1 for workbook");
     assert_eq!(
         wb_rel.rel_type,
         "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
@@ -306,7 +359,8 @@ fn all_nine_chart_kinds_produce_valid_packages() {
             kind
         );
         assert!(
-            pkg.get_part("/ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx").is_some(),
+            pkg.get_part("/ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx")
+                .is_some(),
             "workbook should exist for {:?}",
             kind
         );
@@ -319,13 +373,22 @@ fn line_chart_has_correct_structure() {
     let pkg = OpcPackage::from_reader(Cursor::new(bytes)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:lineChart>"), "should contain c:lineChart");
+    assert!(
+        chart_xml.contains("<c:lineChart>"),
+        "should contain c:lineChart"
+    );
     assert!(
         chart_xml.contains("grouping val=\"standard\""),
         "line chart should have grouping=standard"
     );
-    assert!(chart_xml.contains("<c:catAx>"), "line chart should have catAx");
-    assert!(chart_xml.contains("<c:valAx>"), "line chart should have valAx");
+    assert!(
+        chart_xml.contains("<c:catAx>"),
+        "line chart should have catAx"
+    );
+    assert!(
+        chart_xml.contains("<c:valAx>"),
+        "line chart should have valAx"
+    );
 }
 
 #[test]
@@ -334,14 +397,23 @@ fn pie_chart_has_correct_structure() {
     let pkg = OpcPackage::from_reader(Cursor::new(bytes)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:pieChart>"), "should contain c:pieChart");
+    assert!(
+        chart_xml.contains("<c:pieChart>"),
+        "should contain c:pieChart"
+    );
     assert!(
         chart_xml.contains("varyColors val=\"1\""),
         "pie chart should have varyColors=1"
     );
     // Pie charts have no axes.
-    assert!(!chart_xml.contains("<c:catAx>"), "pie chart should NOT have catAx");
-    assert!(!chart_xml.contains("<c:valAx>"), "pie chart should NOT have valAx");
+    assert!(
+        !chart_xml.contains("<c:catAx>"),
+        "pie chart should NOT have catAx"
+    );
+    assert!(
+        !chart_xml.contains("<c:valAx>"),
+        "pie chart should NOT have valAx"
+    );
 }
 
 #[test]
@@ -350,7 +422,10 @@ fn doughnut_chart_has_correct_structure() {
     let pkg = OpcPackage::from_reader(Cursor::new(bytes)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:doughnutChart>"), "should contain c:doughnutChart");
+    assert!(
+        chart_xml.contains("<c:doughnutChart>"),
+        "should contain c:doughnutChart"
+    );
     assert!(
         chart_xml.contains("holeSize val=\"50\""),
         "doughnut chart should have holeSize=50"
@@ -360,8 +435,14 @@ fn doughnut_chart_has_correct_structure() {
         "doughnut chart should have varyColors=1"
     );
     // Doughnut charts have no axes.
-    assert!(!chart_xml.contains("<c:catAx>"), "doughnut chart should NOT have catAx");
-    assert!(!chart_xml.contains("<c:valAx>"), "doughnut chart should NOT have valAx");
+    assert!(
+        !chart_xml.contains("<c:catAx>"),
+        "doughnut chart should NOT have catAx"
+    );
+    assert!(
+        !chart_xml.contains("<c:valAx>"),
+        "doughnut chart should NOT have valAx"
+    );
 }
 
 #[test]
@@ -370,13 +451,22 @@ fn area_chart_has_correct_structure() {
     let pkg = OpcPackage::from_reader(Cursor::new(bytes)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:areaChart>"), "should contain c:areaChart");
+    assert!(
+        chart_xml.contains("<c:areaChart>"),
+        "should contain c:areaChart"
+    );
     assert!(
         chart_xml.contains("grouping val=\"standard\""),
         "area chart should have grouping=standard"
     );
-    assert!(chart_xml.contains("<c:catAx>"), "area chart should have catAx");
-    assert!(chart_xml.contains("<c:valAx>"), "area chart should have valAx");
+    assert!(
+        chart_xml.contains("<c:catAx>"),
+        "area chart should have catAx"
+    );
+    assert!(
+        chart_xml.contains("<c:valAx>"),
+        "area chart should have valAx"
+    );
 }
 
 #[test]
@@ -385,16 +475,28 @@ fn scatter_chart_has_correct_structure() {
     let pkg = OpcPackage::from_reader(Cursor::new(bytes)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:scatterChart>"), "should contain c:scatterChart");
+    assert!(
+        chart_xml.contains("<c:scatterChart>"),
+        "should contain c:scatterChart"
+    );
     assert!(
         chart_xml.contains("scatterStyle val=\"lineMarker\""),
         "scatter chart should have scatterStyle=lineMarker"
     );
     // Scatter uses xVal/yVal instead of cat/val.
-    assert!(chart_xml.contains("<c:xVal>"), "scatter chart should have xVal");
-    assert!(chart_xml.contains("<c:yVal>"), "scatter chart should have yVal");
+    assert!(
+        chart_xml.contains("<c:xVal>"),
+        "scatter chart should have xVal"
+    );
+    assert!(
+        chart_xml.contains("<c:yVal>"),
+        "scatter chart should have yVal"
+    );
     // Scatter has two value axes.
-    assert!(chart_xml.contains("<c:valAx>"), "scatter chart should have valAx");
+    assert!(
+        chart_xml.contains("<c:valAx>"),
+        "scatter chart should have valAx"
+    );
 }
 
 #[test]
@@ -412,9 +514,18 @@ fn doughnut_chart_data_editing() {
     let pkg = OpcPackage::from_reader(Cursor::new(saved)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:doughnutChart>"), "doughnutChart preserved");
-    assert!(chart_xml.contains("<c:v>Slice A</c:v>"), "new category Slice A");
-    assert!(chart_xml.contains("<c:v>Slice B</c:v>"), "new category Slice B");
+    assert!(
+        chart_xml.contains("<c:doughnutChart>"),
+        "doughnutChart preserved"
+    );
+    assert!(
+        chart_xml.contains("<c:v>Slice A</c:v>"),
+        "new category Slice A"
+    );
+    assert!(
+        chart_xml.contains("<c:v>Slice B</c:v>"),
+        "new category Slice B"
+    );
     assert!(chart_xml.contains("<c:v>60</c:v>"), "new value 60");
     assert!(chart_xml.contains("<c:v>40</c:v>"), "new value 40");
 }
@@ -530,7 +641,6 @@ fn error_on_empty_series() {
     assert!(result.is_err(), "should error on empty series");
 }
 
-
 // ============================================================================
 // Chart data editing tests (Task 12.5 — Requirements 5.1, 5.2)
 // ============================================================================
@@ -562,23 +672,56 @@ fn update_chart_data_replaces_categories_and_values() {
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
     // New categories present.
-    assert!(chart_xml.contains("<c:v>Jan</c:v>"), "should contain new category Jan");
-    assert!(chart_xml.contains("<c:v>Feb</c:v>"), "should contain new category Feb");
-    assert!(chart_xml.contains("<c:v>Mar</c:v>"), "should contain new category Mar");
+    assert!(
+        chart_xml.contains("<c:v>Jan</c:v>"),
+        "should contain new category Jan"
+    );
+    assert!(
+        chart_xml.contains("<c:v>Feb</c:v>"),
+        "should contain new category Feb"
+    );
+    assert!(
+        chart_xml.contains("<c:v>Mar</c:v>"),
+        "should contain new category Mar"
+    );
 
     // Old categories gone.
-    assert!(!chart_xml.contains("<c:v>Q1</c:v>"), "old category Q1 should be gone");
-    assert!(!chart_xml.contains("<c:v>Q4</c:v>"), "old category Q4 should be gone");
+    assert!(
+        !chart_xml.contains("<c:v>Q1</c:v>"),
+        "old category Q1 should be gone"
+    );
+    assert!(
+        !chart_xml.contains("<c:v>Q4</c:v>"),
+        "old category Q4 should be gone"
+    );
 
     // New series names.
-    assert!(chart_xml.contains("<c:v>Sales</c:v>"), "should contain new series name Sales");
-    assert!(chart_xml.contains("<c:v>Profit</c:v>"), "should contain new series name Profit");
+    assert!(
+        chart_xml.contains("<c:v>Sales</c:v>"),
+        "should contain new series name Sales"
+    );
+    assert!(
+        chart_xml.contains("<c:v>Profit</c:v>"),
+        "should contain new series name Profit"
+    );
 
     // New values.
-    assert!(chart_xml.contains("<c:v>10</c:v>"), "should contain value 10");
-    assert!(chart_xml.contains("<c:v>20</c:v>"), "should contain value 20");
-    assert!(chart_xml.contains("<c:v>30</c:v>"), "should contain value 30");
-    assert!(chart_xml.contains("<c:v>15</c:v>"), "should contain value 15");
+    assert!(
+        chart_xml.contains("<c:v>10</c:v>"),
+        "should contain value 10"
+    );
+    assert!(
+        chart_xml.contains("<c:v>20</c:v>"),
+        "should contain value 20"
+    );
+    assert!(
+        chart_xml.contains("<c:v>30</c:v>"),
+        "should contain value 30"
+    );
+    assert!(
+        chart_xml.contains("<c:v>15</c:v>"),
+        "should contain value 15"
+    );
 }
 
 #[test]
@@ -598,15 +741,27 @@ fn update_chart_data_preserves_chart_structure() {
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
     // Chart structure preserved.
-    assert!(chart_xml.contains("<c:barChart>"), "barChart element preserved");
+    assert!(
+        chart_xml.contains("<c:barChart>"),
+        "barChart element preserved"
+    );
     assert!(chart_xml.contains("barDir val=\"bar\""), "barDir preserved");
-    assert!(chart_xml.contains("grouping val=\"clustered\""), "grouping preserved");
+    assert!(
+        chart_xml.contains("grouping val=\"clustered\""),
+        "grouping preserved"
+    );
     assert!(chart_xml.contains("<c:catAx>"), "catAx preserved");
     assert!(chart_xml.contains("<c:valAx>"), "valAx preserved");
-    assert!(chart_xml.contains("<c:externalData"), "externalData preserved");
+    assert!(
+        chart_xml.contains("<c:externalData"),
+        "externalData preserved"
+    );
 
     // Title preserved.
-    assert!(chart_xml.contains("Original Title"), "title preserved on edit");
+    assert!(
+        chart_xml.contains("Original Title"),
+        "title preserved on edit"
+    );
 }
 
 #[test]
@@ -634,8 +789,14 @@ fn update_chart_data_updates_workbook_consistently() {
     let mut sheet_xml = String::new();
     std::io::Read::read_to_string(&mut sheet, &mut sheet_xml).unwrap();
 
-    assert!(sheet_xml.contains("<v>500</v>"), "workbook should contain value 500");
-    assert!(sheet_xml.contains("<v>600</v>"), "workbook should contain value 600");
+    assert!(
+        sheet_xml.contains("<v>500</v>"),
+        "workbook should contain value 500"
+    );
+    assert!(
+        sheet_xml.contains("<v>600</v>"),
+        "workbook should contain value 600"
+    );
 }
 
 #[test]
@@ -676,7 +837,10 @@ fn update_chart_data_scatter_chart() {
     let pkg = OpcPackage::from_reader(Cursor::new(saved)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:scatterChart>"), "scatterChart preserved");
+    assert!(
+        chart_xml.contains("<c:scatterChart>"),
+        "scatterChart preserved"
+    );
     // Scatter uses xVal/yVal.
     assert!(chart_xml.contains("<c:xVal>"), "xVal present");
     assert!(chart_xml.contains("<c:yVal>"), "yVal present");
@@ -789,10 +953,19 @@ fn update_chart_data_fewer_series_removes_extras() {
     let pkg = OpcPackage::from_reader(Cursor::new(saved)).unwrap();
     let chart_xml = String::from_utf8_lossy(pkg.get_part("/ppt/charts/chart1.xml").unwrap());
 
-    assert!(chart_xml.contains("<c:v>Only</c:v>"), "single series name present");
+    assert!(
+        chart_xml.contains("<c:v>Only</c:v>"),
+        "single series name present"
+    );
     // Old series names should be gone.
-    assert!(!chart_xml.contains("<c:v>Revenue</c:v>"), "old series Revenue removed");
-    assert!(!chart_xml.contains("<c:v>Costs</c:v>"), "old series Costs removed");
+    assert!(
+        !chart_xml.contains("<c:v>Revenue</c:v>"),
+        "old series Revenue removed"
+    );
+    assert!(
+        !chart_xml.contains("<c:v>Costs</c:v>"),
+        "old series Costs removed"
+    );
 }
 
 #[test]
@@ -847,7 +1020,6 @@ fn update_chart_data_formula_refs_updated() {
         "value formula should reference B2:B4 for series 1"
     );
 }
-
 
 // ============================================================================
 // LibreOffice load gate (env-guarded) — Requirement 26.3

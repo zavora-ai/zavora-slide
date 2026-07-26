@@ -19,7 +19,9 @@ pub struct NotesDom {
 impl NotesDom {
     /// Parse a notes-slide part into the editable DOM.
     pub fn parse(src: &[u8]) -> Result<NotesDom> {
-        Ok(NotesDom { doc: Document::parse(src)? })
+        Ok(NotesDom {
+            doc: Document::parse(src)?,
+        })
     }
 
     /// Serialize back to bytes (byte-identical when unedited).
@@ -228,7 +230,8 @@ mod tests {
     #[test]
     fn set_notes_text_multi_line() {
         let mut dom = NotesDom::parse(&sample_notes_xml()).unwrap();
-        dom.set_notes_text("Line one\nLine two\nLine three").unwrap();
+        dom.set_notes_text("Line one\nLine two\nLine three")
+            .unwrap();
         assert_eq!(dom.notes_text(), "Line one\nLine two\nLine three");
     }
 

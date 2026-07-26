@@ -8,8 +8,8 @@
 //! subtrees still emit verbatim. This is the foundation for surgical,
 //! PowerPoint-grade slide editing — no re-authoring from extracted text.
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 
 use crate::error::{OxmlError, Result};
 
@@ -88,7 +88,10 @@ impl Element {
 
     /// Value of an attribute by its (qualified) name, if present.
     pub fn attr(&self, name: &[u8]) -> Option<&[u8]> {
-        self.attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_slice())
+        self.attrs
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_slice())
     }
 
     /// Set (or add) an attribute, marking the start tag for regeneration.
@@ -262,56 +265,56 @@ impl Element {
 /// Schema-valid child ordering for `a:rPr` (CT_TextCharacterProperties).
 /// Children must appear in this order per ECMA-376 §21.1.2.3.9.
 const RPR_ORDER: &[&[u8]] = &[
-    b"ln",        // a:ln
-    b"noFill",    // a:noFill
-    b"solidFill", // a:solidFill
-    b"gradFill",  // a:gradFill
-    b"blipFill",  // a:blipFill
-    b"pattFill",  // a:pattFill
-    b"grpFill",   // a:grpFill
-    b"effectLst", // a:effectLst
-    b"effectDag", // a:effectDag
-    b"highlight", // a:highlight
-    b"uLnTx",    // a:uLnTx
-    b"uLn",      // a:uLn
-    b"uFillTx",  // a:uFillTx
-    b"uFill",    // a:uFill
-    b"latin",    // a:latin
-    b"ea",       // a:ea
-    b"cs",       // a:cs
-    b"sym",      // a:sym
-    b"hlinkClick", // a:hlinkClick
+    b"ln",             // a:ln
+    b"noFill",         // a:noFill
+    b"solidFill",      // a:solidFill
+    b"gradFill",       // a:gradFill
+    b"blipFill",       // a:blipFill
+    b"pattFill",       // a:pattFill
+    b"grpFill",        // a:grpFill
+    b"effectLst",      // a:effectLst
+    b"effectDag",      // a:effectDag
+    b"highlight",      // a:highlight
+    b"uLnTx",          // a:uLnTx
+    b"uLn",            // a:uLn
+    b"uFillTx",        // a:uFillTx
+    b"uFill",          // a:uFill
+    b"latin",          // a:latin
+    b"ea",             // a:ea
+    b"cs",             // a:cs
+    b"sym",            // a:sym
+    b"hlinkClick",     // a:hlinkClick
     b"hlinkMouseOver", // a:hlinkMouseOver
-    b"rtl",      // a:rtl
-    b"extLst",   // a:extLst
+    b"rtl",            // a:rtl
+    b"extLst",         // a:extLst
 ];
 
 /// Schema-valid child ordering for `a:pPr` (CT_TextParagraphProperties).
 /// Children must appear in this order per ECMA-376 §21.1.2.2.7.
 const PPR_ORDER: &[&[u8]] = &[
-    b"lnSpc",    // a:lnSpc
-    b"spcBef",   // a:spcBef
-    b"spcAft",   // a:spcAft
-    b"buClrTx",  // a:buClrTx
-    b"buClr",    // a:buClr
-    b"buSzTx",   // a:buSzTx
-    b"buSzPct",  // a:buSzPct
-    b"buSzPts",  // a:buSzPts
-    b"buFontTx", // a:buFontTx
-    b"buFont",   // a:buFont
-    b"buNone",   // a:buNone
+    b"lnSpc",     // a:lnSpc
+    b"spcBef",    // a:spcBef
+    b"spcAft",    // a:spcAft
+    b"buClrTx",   // a:buClrTx
+    b"buClr",     // a:buClr
+    b"buSzTx",    // a:buSzTx
+    b"buSzPct",   // a:buSzPct
+    b"buSzPts",   // a:buSzPts
+    b"buFontTx",  // a:buFontTx
+    b"buFont",    // a:buFont
+    b"buNone",    // a:buNone
     b"buAutoNum", // a:buAutoNum
-    b"buChar",   // a:buChar
-    b"buBlip",   // a:buBlip
-    b"tabLst",   // a:tabLst
-    b"defRPr",   // a:defRPr
-    b"extLst",   // a:extLst
+    b"buChar",    // a:buChar
+    b"buBlip",    // a:buBlip
+    b"tabLst",    // a:tabLst
+    b"defRPr",    // a:defRPr
+    b"extLst",    // a:extLst
 ];
 
 /// Schema-valid child ordering for `p:spPr` / `a:spPr` (CT_ShapeProperties).
 /// Children must appear in this order per ECMA-376 §19.3.1.44 / §21.1.2.1.1.
 const SPPR_ORDER: &[&[u8]] = &[
-    b"xfrm",     // a:xfrm
+    b"xfrm",      // a:xfrm
     b"custGeom",  // a:custGeom
     b"prstGeom",  // a:prstGeom
     b"noFill",    // a:noFill
@@ -350,7 +353,10 @@ fn child_order_table(parent_local: &[u8]) -> Option<&'static [&'static [u8]]> {
 /// Return the rank (position) of a child local name in the order table.
 /// Unknown names get a rank past the end (appended).
 fn rank_of(local: &[u8], table: &[&[u8]]) -> usize {
-    table.iter().position(|&entry| entry == local).unwrap_or(table.len())
+    table
+        .iter()
+        .position(|&entry| entry == local)
+        .unwrap_or(table.len())
 }
 
 /// A parsed XML document: a sequence of top-level nodes (declaration, root
@@ -501,13 +507,17 @@ mod tests {
 
     #[test]
     fn round_trips_declaration_and_nesting() {
-        round_trips(br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><a><b x="1">hi</b><c/></a>"#);
+        round_trips(
+            br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><a><b x="1">hi</b><c/></a>"#,
+        );
     }
 
     #[test]
     fn round_trips_single_quotes_and_whitespace() {
         // python-pptx-style single-quoted decl + indentation must survive verbatim.
-        round_trips(b"<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<a>\n  <b/>\n</a>\n");
+        round_trips(
+            b"<?xml version='1.0' encoding='UTF-8' standalone='yes'?>\n<a>\n  <b/>\n</a>\n",
+        );
     }
 
     #[test]
@@ -522,7 +532,9 @@ mod tests {
 
     #[test]
     fn navigation_and_attrs() {
-        let doc = Document::parse(br#"<p:sp><p:nvSpPr><p:ph type="title" idx="1"/></p:nvSpPr></p:sp>"#).unwrap();
+        let doc =
+            Document::parse(br#"<p:sp><p:nvSpPr><p:ph type="title" idx="1"/></p:nvSpPr></p:sp>"#)
+                .unwrap();
         let root = doc.root().unwrap();
         assert_eq!(root.local_name(), b"sp");
         let ph = root.find_descendant(b"ph").unwrap();
@@ -532,7 +544,8 @@ mod tests {
     #[test]
     fn set_text_preserves_siblings_and_escapes() {
         // Editing one <a:t> must leave the sibling run byte-identical.
-        let src = br#"<a:p><a:r><a:rPr b="1"/><a:t>old</a:t></a:r><a:r><a:t>keep</a:t></a:r></a:p>"#;
+        let src =
+            br#"<a:p><a:r><a:rPr b="1"/><a:t>old</a:t></a:r><a:r><a:t>keep</a:t></a:r></a:p>"#;
         let mut doc = Document::parse(src).unwrap();
         let root = doc.root_mut().unwrap();
         let first_run = root.children_named_mut(b"r").next().unwrap();
@@ -542,7 +555,10 @@ mod tests {
         let s = String::from_utf8(doc.to_bytes()).unwrap();
         assert!(s.contains("<a:t>a &lt; b &amp; c</a:t>"), "got {s}");
         assert!(s.contains(r#"<a:rPr b="1"/>"#), "rPr verbatim: {s}");
-        assert!(s.contains("<a:r><a:t>keep</a:t></a:r>"), "2nd run verbatim: {s}");
+        assert!(
+            s.contains("<a:r><a:t>keep</a:t></a:r>"),
+            "2nd run verbatim: {s}"
+        );
     }
 
     #[test]
@@ -555,13 +571,17 @@ mod tests {
     #[test]
     fn set_attr_regenerates_only_that_tag() {
         let mut doc = Document::parse(br#"<a><b x="1"/><c y="2"/></a>"#).unwrap();
-        let b = doc.root_mut().unwrap().children_named_mut(b"b").next().unwrap();
+        let b = doc
+            .root_mut()
+            .unwrap()
+            .children_named_mut(b"b")
+            .next()
+            .unwrap();
         b.set_attr(b"x", b"9");
         let s = String::from_utf8(doc.to_bytes()).unwrap();
         assert!(s.contains(r#"<b x="9"/>"#), "got {s}");
         assert!(s.contains(r#"<c y="2"/>"#), "sibling verbatim: {s}");
     }
-
 
     #[test]
     fn dirty_element_regenerates_clean_siblings_verbatim() {
@@ -575,7 +595,11 @@ mod tests {
         }
         // <b> still emits verbatim (with its original spacing/quotes).
         let out = doc.to_bytes();
-        assert!(out.windows(11).any(|w| w == br#"<b x="1">ke"#.as_slice() || w == br#"<b x="1">keep"#[..11].as_ref()));
+        assert!(
+            out.windows(11)
+                .any(|w| w == br#"<b x="1">ke"#.as_slice()
+                    || w == br#"<b x="1">keep"#[..11].as_ref())
+        );
         assert_eq!(out, br#"<a><b x="1">keep</b><c>edit</c></a>"#);
     }
 
@@ -652,9 +676,10 @@ mod tests {
     #[test]
     fn remove_children_where_removes_matching() {
         let mut doc = Document::parse(b"<a><b/><c/><b/><d/></a>").unwrap();
-        let removed = doc.root_mut().unwrap().remove_children_where(|n| {
-            matches!(n, Node::Element(e) if e.local_name() == b"b")
-        });
+        let removed = doc
+            .root_mut()
+            .unwrap()
+            .remove_children_where(|n| matches!(n, Node::Element(e) if e.local_name() == b"b"));
         assert_eq!(removed.len(), 2);
         let s = String::from_utf8(doc.to_bytes()).unwrap();
         assert_eq!(s, "<a><c/><d/></a>");
@@ -663,9 +688,10 @@ mod tests {
     #[test]
     fn remove_children_where_no_match() {
         let mut doc = Document::parse(b"<a><b/><c/></a>").unwrap();
-        let removed = doc.root_mut().unwrap().remove_children_where(|n| {
-            matches!(n, Node::Element(e) if e.local_name() == b"z")
-        });
+        let removed = doc
+            .root_mut()
+            .unwrap()
+            .remove_children_where(|n| matches!(n, Node::Element(e) if e.local_name() == b"z"));
         assert_eq!(removed.len(), 0);
         // Unchanged
         assert_eq!(doc.to_bytes(), b"<a><b/><c/></a>");

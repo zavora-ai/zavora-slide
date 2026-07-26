@@ -149,10 +149,7 @@ mod tests {
 
     #[test]
     fn to_xml_open_tag() {
-        assert_eq!(
-            SchemeColor::Dk1.to_xml_open(),
-            "<a:schemeClr val=\"dk1\">"
-        );
+        assert_eq!(SchemeColor::Dk1.to_xml_open(), "<a:schemeClr val=\"dk1\">");
     }
 
     #[test]

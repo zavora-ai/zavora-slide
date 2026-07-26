@@ -50,7 +50,10 @@ impl ThemeSpec {
         if let Some(c) = self.colors.get(name) {
             return Some(Self::hex(c));
         }
-        DEFAULTS.iter().find(|(k, _)| *k == name).map(|(_, v)| v.to_string())
+        DEFAULTS
+            .iter()
+            .find(|(k, _)| *k == name)
+            .map(|(_, v)| v.to_string())
     }
 
     /// Build the theme XML by substituting into the canonical Office theme.
@@ -94,7 +97,12 @@ mod tests {
 
     #[test]
     fn accent_and_fonts_substituted() {
-        let mut t = ThemeSpec { accent: Some("#FF0000".into()), heading_font: Some("Inter".into()), body_font: Some("Inter".into()), ..Default::default() };
+        let mut t = ThemeSpec {
+            accent: Some("#FF0000".into()),
+            heading_font: Some("Inter".into()),
+            body_font: Some("Inter".into()),
+            ..Default::default()
+        };
         t.colors.insert("accent3".into(), "00FF00".into());
         let xml = String::from_utf8(t.build_theme_xml()).unwrap();
         assert!(xml.contains("<a:accent1><a:srgbClr val=\"FF0000\"/>"));
@@ -106,7 +114,10 @@ mod tests {
 
     #[test]
     fn resolve_defaults_and_overrides() {
-        let t = ThemeSpec { accent: Some("aabbcc".into()), ..Default::default() };
+        let t = ThemeSpec {
+            accent: Some("aabbcc".into()),
+            ..Default::default()
+        };
         assert_eq!(t.resolve("accent1").as_deref(), Some("AABBCC"));
         assert_eq!(t.resolve("accent2").as_deref(), Some("C0504D"));
     }

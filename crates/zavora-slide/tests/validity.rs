@@ -7,8 +7,8 @@ mod test_util;
 
 use std::path::Path;
 
-use zavora_slide_opc::OpcPackage;
 use zavora_slide::{Layout, Presentation};
+use zavora_slide_opc::OpcPackage;
 
 /// Resolve a (possibly relative) rel target against the source part's directory.
 fn resolve(base_part: &str, target: &str) -> String {
@@ -53,12 +53,18 @@ fn required_parts_present() {
         "/docProps/app.xml",
         "/ppt/slides/slide1.xml",
     ] {
-        assert!(pkg.get_part(required).is_some(), "missing required part {required}");
+        assert!(
+            pkg.get_part(required).is_some(),
+            "missing required part {required}"
+        );
     }
 
     // Schema-required notesSz is emitted.
     let pres = String::from_utf8(pkg.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
-    assert!(pres.contains("notesSz"), "presentation.xml missing required notesSz");
+    assert!(
+        pres.contains("notesSz"),
+        "presentation.xml missing required notesSz"
+    );
 }
 
 #[test]
@@ -74,7 +80,11 @@ fn all_relationships_resolve() {
             continue;
         }
         let resolved = format!("/{}", resolve("", &rel.target));
-        assert!(pkg.get_part(&resolved).is_some(), "dangling package rel -> {}", rel.target);
+        assert!(
+            pkg.get_part(&resolved).is_some(),
+            "dangling package rel -> {}",
+            rel.target
+        );
     }
 
     // Part-level rels.
@@ -118,6 +128,9 @@ fn saves_to_disk() {
     assert!(Path::new(&path).exists());
     // Reopen from disk through the OPC layer.
     let pkg = OpcPackage::open(&path).unwrap();
-    assert_eq!(pkg.main_presentation_part().as_deref(), Some("/ppt/presentation.xml"));
+    assert_eq!(
+        pkg.main_presentation_part().as_deref(),
+        Some("/ppt/presentation.xml")
+    );
     std::fs::remove_file(&path).ok();
 }

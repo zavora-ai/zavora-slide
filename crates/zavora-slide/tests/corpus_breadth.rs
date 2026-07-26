@@ -19,11 +19,10 @@
 
 mod test_util;
 
+use test_util::similarity::{SIMILARITY_THRESHOLD, compare_pngs, render_with_libreoffice};
 use test_util::{libreoffice_load_gate, package_entries, reopen};
-use test_util::similarity::{compare_pngs, render_with_libreoffice, SIMILARITY_THRESHOLD};
 use zavora_slide::{
-    Bullet, ChartKind, ChartSpec, Emu, Layout, Presentation, RenderFormat,
-    to_markdown, to_outline,
+    Bullet, ChartKind, ChartSpec, Emu, Layout, Presentation, RenderFormat, to_markdown, to_outline,
 };
 use zavora_slide_opc::OpcPackage;
 
@@ -41,7 +40,10 @@ fn corpus_opens_and_round_trips_faithfully() {
     // Unedited round-trip is byte-identical.
     let orig = package_entries(&OpcPackage::open(SAMPLE).unwrap());
     let resaved = package_entries(&reopen(p.save_to_buffer().unwrap()));
-    assert_eq!(orig, resaved, "unedited corpus round-trip must be byte-identical");
+    assert_eq!(
+        orig, resaved,
+        "unedited corpus round-trip must be byte-identical"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -57,7 +59,11 @@ fn corpus_text_extraction_covers_all_slides() {
     // Every slide has at least some content.
     for (i, slide) in outline.slides.iter().enumerate() {
         let has_content = slide.title.is_some() || !slide.elements.is_empty();
-        assert!(has_content, "slide {} should have extractable content", i + 1);
+        assert!(
+            has_content,
+            "slide {} should have extractable content",
+            i + 1
+        );
     }
 }
 
@@ -87,7 +93,11 @@ fn corpus_render_png_all_slides() {
             .unwrap_or_else(|e| panic!("render slide {i} to PNG failed: {e}"));
         assert!(!png.is_empty(), "slide {i} PNG must not be empty");
         // Valid PNG signature.
-        assert_eq!(&png[..8], &[137, 80, 78, 71, 13, 10, 26, 10], "slide {i} has valid PNG header");
+        assert_eq!(
+            &png[..8],
+            &[137, 80, 78, 71, 13, 10, 26, 10],
+            "slide {i} has valid PNG header"
+        );
     }
 }
 
@@ -119,14 +129,24 @@ fn corpus_pdf_export() {
 #[test]
 fn corpus_text_editing_is_surgical() {
     let mut p = Presentation::open(SAMPLE).unwrap();
-    p.slide_mut(0).unwrap().set_title("Breadth Test Title").unwrap();
+    p.slide_mut(0)
+        .unwrap()
+        .set_title("Breadth Test Title")
+        .unwrap();
 
     let orig = package_entries(&OpcPackage::open(SAMPLE).unwrap());
     let out = package_entries(&reopen(p.save_to_buffer().unwrap()));
 
     // Only the edited slide changes.
-    let diffs: Vec<&String> = orig.keys().filter(|k| orig.get(*k) != out.get(*k)).collect();
-    assert_eq!(diffs, vec!["/ppt/slides/slide1.xml"], "only edited slide changes");
+    let diffs: Vec<&String> = orig
+        .keys()
+        .filter(|k| orig.get(*k) != out.get(*k))
+        .collect();
+    assert_eq!(
+        diffs,
+        vec!["/ppt/slides/slide1.xml"],
+        "only edited slide changes"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -147,7 +167,10 @@ fn corpus_add_textbox_and_round_trip() {
     let buf = p.save_to_buffer().unwrap();
     let p2 = Presentation::open_from_bytes(&buf).unwrap();
     let text = p2.slide(0).unwrap().text();
-    assert!(text.contains("Breadth textbox"), "added textbox survives round-trip");
+    assert!(
+        text.contains("Breadth textbox"),
+        "added textbox survives round-trip"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -175,7 +198,8 @@ fn chart_creation_round_trips() {
             Emu::inches(8.0),
             Emu::inches(5.0),
             1,
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     let buf = p.save_to_buffer().unwrap();
@@ -237,22 +261,35 @@ fn image_insert_and_dedupe() {
         // Insert same image twice — should deduplicate the media part.
         s.insert_image_bytes(
             &png_bytes,
-            Emu::inches(1.0), Emu::inches(1.0),
-            Emu::inches(2.0), Emu::inches(2.0),
-        ).unwrap();
+            Emu::inches(1.0),
+            Emu::inches(1.0),
+            Emu::inches(2.0),
+            Emu::inches(2.0),
+        )
+        .unwrap();
         s.insert_image_bytes(
             &png_bytes,
-            Emu::inches(4.0), Emu::inches(1.0),
-            Emu::inches(2.0), Emu::inches(2.0),
-        ).unwrap();
+            Emu::inches(4.0),
+            Emu::inches(1.0),
+            Emu::inches(2.0),
+            Emu::inches(2.0),
+        )
+        .unwrap();
     }
 
     let buf2 = p2.save_to_buffer().unwrap();
     let pkg = OpcPackage::from_reader(std::io::Cursor::new(&buf2)).unwrap();
 
     // Only one media part despite two inserts (content-hash dedupe).
-    let media_parts: Vec<&str> = pkg.part_names().filter(|n| n.starts_with("/ppt/media/")).collect();
-    assert_eq!(media_parts.len(), 1, "identical images should be deduplicated to one media part");
+    let media_parts: Vec<&str> = pkg
+        .part_names()
+        .filter(|n| n.starts_with("/ppt/media/"))
+        .collect();
+    assert_eq!(
+        media_parts.len(),
+        1,
+        "identical images should be deduplicated to one media part"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -307,7 +344,10 @@ fn design_theme_application_produces_valid_deck() {
     let palettes = zavora_slide::palettes();
     let pairings = zavora_slide::font_pairings();
     assert!(!palettes.is_empty(), "palette catalog must not be empty");
-    assert!(!pairings.is_empty(), "font pairing catalog must not be empty");
+    assert!(
+        !pairings.is_empty(),
+        "font pairing catalog must not be empty"
+    );
 
     zavora_slide::apply_design_theme(&mut p, palettes[0].id, pairings[0].id).unwrap();
 
@@ -360,9 +400,23 @@ fn authored_deck_libreoffice_load_gate() {
     {
         let mut s = p.slide_mut(0).unwrap();
         s.set_title("Gate Test").unwrap();
-        s.add_bullets(&[Bullet::new("Item 1"), Bullet::new("Item 2")]).unwrap();
-        s.add_text_box("Box", Emu::inches(1.0), Emu::inches(5.0), Emu::inches(3.0), Emu::inches(0.5));
-        let tid = s.add_table(2, 2, Emu::inches(5.0), Emu::inches(1.0), Emu::inches(4.0), Emu::inches(2.0));
+        s.add_bullets(&[Bullet::new("Item 1"), Bullet::new("Item 2")])
+            .unwrap();
+        s.add_text_box(
+            "Box",
+            Emu::inches(1.0),
+            Emu::inches(5.0),
+            Emu::inches(3.0),
+            Emu::inches(0.5),
+        );
+        let tid = s.add_table(
+            2,
+            2,
+            Emu::inches(5.0),
+            Emu::inches(1.0),
+            Emu::inches(4.0),
+            Emu::inches(2.0),
+        );
         s.set_table_cell(tid, 0, 0, "A").unwrap();
         s.set_table_cell(tid, 0, 1, "B").unwrap();
         s.set_table_cell(tid, 1, 0, "C").unwrap();
@@ -399,7 +453,9 @@ fn corpus_render_similarity_all_slides() {
             }
             Some(Ok(lo_png)) => {
                 let score = compare_pngs(&our_png, &lo_png);
-                eprintln!("Similarity score (slide {i}): {score:.4} (threshold: {SIMILARITY_THRESHOLD})");
+                eprintln!(
+                    "Similarity score (slide {i}): {score:.4} (threshold: {SIMILARITY_THRESHOLD})"
+                );
                 assert!(
                     score >= SIMILARITY_THRESHOLD,
                     "Slide {i} similarity {score:.4} below threshold {SIMILARITY_THRESHOLD}"

@@ -206,15 +206,7 @@ impl FreeformPath {
 
     /// Add a cubicBezTo segment — draws a cubic Bézier curve with two control
     /// points (x1,y1), (x2,y2) and endpoint (x,y).
-    pub fn cubic_to(
-        &mut self,
-        x1: i64,
-        y1: i64,
-        x2: i64,
-        y2: i64,
-        x: i64,
-        y: i64,
-    ) -> &mut Self {
+    pub fn cubic_to(&mut self, x1: i64, y1: i64, x2: i64, y2: i64, x: i64, y: i64) -> &mut Self {
         self.segments.push(PathSegment::CubicTo {
             x1,
             y1,
@@ -239,14 +231,12 @@ impl FreeformPath {
         for seg in &self.segments {
             match seg {
                 PathSegment::MoveTo { x, y } => {
-                    path_children.push_str(&format!(
-                        "<a:moveTo><a:pt x=\"{x}\" y=\"{y}\"/></a:moveTo>"
-                    ));
+                    path_children
+                        .push_str(&format!("<a:moveTo><a:pt x=\"{x}\" y=\"{y}\"/></a:moveTo>"));
                 }
                 PathSegment::LineTo { x, y } => {
-                    path_children.push_str(&format!(
-                        "<a:lnTo><a:pt x=\"{x}\" y=\"{y}\"/></a:lnTo>"
-                    ));
+                    path_children
+                        .push_str(&format!("<a:lnTo><a:pt x=\"{x}\" y=\"{y}\"/></a:lnTo>"));
                 }
                 PathSegment::CubicTo {
                     x1,
@@ -311,7 +301,9 @@ pub struct SlideDom {
 impl SlideDom {
     /// Parse a slide part into the editable DOM.
     pub fn parse(src: &[u8]) -> Result<SlideDom> {
-        Ok(SlideDom { doc: Document::parse(src)? })
+        Ok(SlideDom {
+            doc: Document::parse(src)?,
+        })
     }
 
     /// Serialize back to bytes (byte-identical when unedited).
@@ -330,7 +322,9 @@ impl SlideDom {
 
     /// Top-level shapes (`p:sp`) in document order.
     pub fn shapes(&self) -> impl Iterator<Item = &Element> {
-        self.sp_tree().into_iter().flat_map(|t| t.children_named(b"sp"))
+        self.sp_tree()
+            .into_iter()
+            .flat_map(|t| t.children_named(b"sp"))
     }
 
     /// Plain text of every shape, one paragraph per line (read accessor).
@@ -393,7 +387,9 @@ impl SlideDom {
     pub fn body_paragraph_count(&self) -> usize {
         self.shapes()
             .filter_map(|sp| {
-                SlideDom::shape_ph_type(sp).filter(|t| t == "body").map(|_| sp)
+                SlideDom::shape_ph_type(sp)
+                    .filter(|t| t == "body")
+                    .map(|_| sp)
             })
             .next()
             .and_then(|sp| sp.find_descendant(b"txBody"))
@@ -430,8 +426,9 @@ impl SlideDom {
             Node::Raw(_) => true,
         });
         for (text, level) in items {
-            tx.children
-                .push(Node::Element(make_paragraph(text, *level, &ppr_tmpl, &rpr_tmpl)));
+            tx.children.push(Node::Element(make_paragraph(
+                text, *level, &ppr_tmpl, &rpr_tmpl,
+            )));
         }
         Ok(())
     }
@@ -466,14 +463,7 @@ impl SlideDom {
     /// tree at the given EMU position/size. Emits `<a:prstGeom prst="{name}">
     /// <a:avLst/></a:prstGeom>`. Existing shapes are untouched. Returns the new
     /// shape's id. Satisfies Requirement 9.1.
-    pub fn add_autoshape(
-        &mut self,
-        prst: &str,
-        x: i64,
-        y: i64,
-        cx: i64,
-        cy: i64,
-    ) -> Result<u32> {
+    pub fn add_autoshape(&mut self, prst: &str, x: i64, y: i64, cx: i64, cy: i64) -> Result<u32> {
         let id = self.next_shape_id();
         let sp_xml = format!(
             "<p:sp><p:nvSpPr><p:cNvPr id=\"{id}\" name=\"Shape {id}\"/>\
@@ -671,9 +661,7 @@ impl SlideDom {
                 _ => None,
             })
             .nth(group_shape_idx)
-            .ok_or_else(|| {
-                OxmlError::Parse(format!("no shape at index {group_shape_idx}"))
-            })?;
+            .ok_or_else(|| OxmlError::Parse(format!("no shape at index {group_shape_idx}")))?;
         if grp.local_name() != b"grpSp" {
             return Err(OxmlError::Parse(format!(
                 "shape at index {group_shape_idx} is not a group (is {:?})",
@@ -887,12 +875,7 @@ impl SlideDom {
     /// Delete the run (or line break) at `run_idx` within the paragraph at
     /// `para_idx` in the shape at `shape_idx`. Sibling runs remain byte-identical
     /// (Req 2.2).
-    pub fn delete_run(
-        &mut self,
-        shape_idx: usize,
-        para_idx: usize,
-        run_idx: usize,
-    ) -> Result<()> {
+    pub fn delete_run(&mut self, shape_idx: usize, para_idx: usize, run_idx: usize) -> Result<()> {
         let tx = self.text_body_by_index_mut(shape_idx)?;
         let p_pos = nth_p_child_position(tx, para_idx)?;
         let para = match &mut tx.children[p_pos] {
@@ -1110,18 +1093,14 @@ impl SlideDom {
 
     /// Ensure the paragraph at `para_idx` in shape `shape_idx` has an `<a:pPr>`
     /// child, creating one if absent. Returns a mutable reference to the pPr.
-    fn ensure_ppr(
-        &mut self,
-        shape_idx: usize,
-        para_idx: usize,
-    ) -> Result<&mut Element> {
+    fn ensure_ppr(&mut self, shape_idx: usize, para_idx: usize) -> Result<&mut Element> {
         let tx = self.text_body_by_index_mut(shape_idx)?;
         let p_pos = nth_p_child_position(tx, para_idx)?;
         let para = match &mut tx.children[p_pos] {
             Node::Element(e) if e.local_name() == b"p" => e,
             _ => {
                 return Err(OxmlError::Parse(
-                    "child at position is not a paragraph".to_string()
+                    "child at position is not a paragraph".to_string(),
                 ));
             }
         };
@@ -1358,9 +1337,8 @@ impl SlideDom {
             .unwrap();
 
         // Remove any existing fill element.
-        sppr.children.retain(|n| {
-            !matches!(n, Node::Element(e) if is_fill(e.local_name()))
-        });
+        sppr.children
+            .retain(|n| !matches!(n, Node::Element(e) if is_fill(e.local_name())));
 
         // Build and insert the new fill element.
         let fill_node = build_fill_element(fill);
@@ -1404,9 +1382,8 @@ impl SlideDom {
             .unwrap();
 
         // Remove any existing <a:ln> element.
-        sppr.children.retain(|n| {
-            !matches!(n, Node::Element(e) if e.local_name() == b"ln")
-        });
+        sppr.children
+            .retain(|n| !matches!(n, Node::Element(e) if e.local_name() == b"ln"));
 
         // Build and insert the new <a:ln> element.
         let ln_node = build_line_element(line);
@@ -1733,9 +1710,8 @@ impl SlideDom {
     pub fn add_table_column(&mut self, shape_idx: usize, width_emu: i64) -> Result<()> {
         let tbl = self.table_element_mut(shape_idx)?;
         // Add gridCol to tblGrid.
-        let tbl_grid = first_child_named_mut(tbl, b"tblGrid").ok_or_else(|| {
-            OxmlError::Parse("table has no tblGrid".into())
-        })?;
+        let tbl_grid = first_child_named_mut(tbl, b"tblGrid")
+            .ok_or_else(|| OxmlError::Parse("table has no tblGrid".into()))?;
         let mut grid_col = new_element(b"a:gridCol");
         grid_col.self_closing = true;
         grid_col.set_attr(b"w", width_emu.to_string().as_bytes());
@@ -1761,9 +1737,8 @@ impl SlideDom {
         let tbl = self.table_element_mut(shape_idx)?;
 
         // Remove gridCol from tblGrid.
-        let tbl_grid = first_child_named_mut(tbl, b"tblGrid").ok_or_else(|| {
-            OxmlError::Parse("table has no tblGrid".into())
-        })?;
+        let tbl_grid = first_child_named_mut(tbl, b"tblGrid")
+            .ok_or_else(|| OxmlError::Parse("table has no tblGrid".into()))?;
         let grid_col_pos = nth_child_position_by_name(tbl_grid, b"gridCol", col_idx)?;
         tbl_grid.children.remove(grid_col_pos);
 
@@ -1876,12 +1851,7 @@ impl SlideDom {
     /// Removes `gridSpan` and `rowSpan` attributes from the origin cell, and
     /// removes `hMerge` and `vMerge` attributes from all cells that were covered
     /// by this merge. The covered cells retain their (empty) txBody. (Req 6.2)
-    pub fn split_table_cell(
-        &mut self,
-        shape_idx: usize,
-        row: usize,
-        col: usize,
-    ) -> Result<()> {
+    pub fn split_table_cell(&mut self, shape_idx: usize, row: usize, col: usize) -> Result<()> {
         let tbl = self.table_element_mut(shape_idx)?;
         let row_count = tbl.children_named(b"tr").count();
         let col_count = tbl_grid_col_count(tbl);
@@ -1915,11 +1885,15 @@ impl SlideDom {
                                 if c_idx == col {
                                     gs = tc
                                         .attr(b"gridSpan")
-                                        .and_then(|v| std::str::from_utf8(v).ok()?.parse::<usize>().ok())
+                                        .and_then(|v| {
+                                            std::str::from_utf8(v).ok()?.parse::<usize>().ok()
+                                        })
                                         .unwrap_or(1);
                                     rs = tc
                                         .attr(b"rowSpan")
-                                        .and_then(|v| std::str::from_utf8(v).ok()?.parse::<usize>().ok())
+                                        .and_then(|v| {
+                                            std::str::from_utf8(v).ok()?.parse::<usize>().ok()
+                                        })
                                         .unwrap_or(1);
                                     break;
                                 }
@@ -1952,7 +1926,8 @@ impl SlideDom {
                             if c_idx >= col && c_idx <= end_col {
                                 if r_idx == row && c_idx == col {
                                     // Origin cell: remove gridSpan and rowSpan.
-                                    tc.attrs.retain(|(k, _)| k != b"gridSpan" && k != b"rowSpan");
+                                    tc.attrs
+                                        .retain(|(k, _)| k != b"gridSpan" && k != b"rowSpan");
                                     tc.dirty = true;
                                 } else {
                                     // Covered cell: remove hMerge and vMerge.
@@ -1982,9 +1957,8 @@ impl SlideDom {
         width_emu: i64,
     ) -> Result<()> {
         let tbl = self.table_element_mut(shape_idx)?;
-        let tbl_grid = first_child_named_mut(tbl, b"tblGrid").ok_or_else(|| {
-            OxmlError::Parse("table has no tblGrid".into())
-        })?;
+        let tbl_grid = first_child_named_mut(tbl, b"tblGrid")
+            .ok_or_else(|| OxmlError::Parse("table has no tblGrid".into()))?;
         let pos = nth_child_position_by_name(tbl_grid, b"gridCol", col_idx)?;
         let grid_col = match &mut tbl_grid.children[pos] {
             Node::Element(e) => e,
@@ -2025,9 +1999,8 @@ impl SlideDom {
     ) -> Result<()> {
         let tc = self.table_cell_mut(shape_idx, row_idx, col_idx)?;
         // Replace the txBody with a fresh one containing the text.
-        tc.children.retain(|n| {
-            !matches!(n, Node::Element(e) if e.local_name() == b"txBody")
-        });
+        tc.children
+            .retain(|n| !matches!(n, Node::Element(e) if e.local_name() == b"txBody"));
         let mut tx_body = new_element(b"a:txBody");
         let mut body_pr = new_element(b"a:bodyPr");
         body_pr.self_closing = true;
@@ -2058,13 +2031,11 @@ impl SlideDom {
         algn: &str,
     ) -> Result<()> {
         let tc = self.table_cell_mut(shape_idx, row_idx, col_idx)?;
-        let tx = find_descendant_mut(tc, b"txBody").ok_or_else(|| {
-            OxmlError::Parse("table cell has no txBody".into())
-        })?;
+        let tx = find_descendant_mut(tc, b"txBody")
+            .ok_or_else(|| OxmlError::Parse("table cell has no txBody".into()))?;
         // Find or create the first paragraph's pPr.
-        let para = first_child_named_mut(tx, b"p").ok_or_else(|| {
-            OxmlError::Parse("cell txBody has no paragraph".into())
-        })?;
+        let para = first_child_named_mut(tx, b"p")
+            .ok_or_else(|| OxmlError::Parse("cell txBody has no paragraph".into()))?;
         let has_ppr = para
             .children
             .iter()
@@ -2099,9 +2070,8 @@ impl SlideDom {
         let tc = self.table_cell_mut(shape_idx, row_idx, col_idx)?;
         let tcpr = ensure_tc_pr(tc);
         // Remove any existing fill element from tcPr.
-        tcpr.children.retain(|n| {
-            !matches!(n, Node::Element(e) if is_fill(e.local_name()))
-        });
+        tcpr.children
+            .retain(|n| !matches!(n, Node::Element(e) if is_fill(e.local_name())));
         let fill_node = build_fill_element(fill);
         if tcpr.self_closing {
             tcpr.self_closing = false;
@@ -2192,9 +2162,7 @@ impl SlideDom {
                 _ => None,
             })
             .ok_or_else(|| {
-                OxmlError::Parse(format!(
-                    "picture at index {shape_idx} has no blipFill"
-                ))
+                OxmlError::Parse(format!("picture at index {shape_idx} has no blipFill"))
             })?;
 
         // Find or create <a:srcRect> inside blipFill.
@@ -2215,7 +2183,9 @@ impl SlideDom {
                 .position(|n| matches!(n, Node::Element(e) if e.local_name() == b"blip"))
                 .map(|i| i + 1)
                 .unwrap_or(0);
-            blip_fill.children.insert(insert_pos, Node::Element(src_rect));
+            blip_fill
+                .children
+                .insert(insert_pos, Node::Element(src_rect));
         }
 
         // Get mutable reference to srcRect and set attributes.
@@ -2379,18 +2349,12 @@ impl SlideDom {
     ///
     /// The caller is responsible for adding the appropriate relationship to the
     /// slide's `.rels` file. Sibling shapes are preserved byte-for-byte (Req 11.3).
-    pub fn set_shape_click_action(
-        &mut self,
-        shape_idx: usize,
-        action: &ClickAction,
-    ) -> Result<()> {
+    pub fn set_shape_click_action(&mut self, shape_idx: usize, action: &ClickAction) -> Result<()> {
         let sp = self.shape_element_mut(shape_idx)?;
 
         // Find the cNvPr element (inside nvSpPr/nvPicPr/nvCxnSpPr/nvGrpSpPr/nvGraphicFramePr).
         let cnvpr = find_descendant_mut(sp, b"cNvPr").ok_or_else(|| {
-            OxmlError::Parse(format!(
-                "shape at index {shape_idx} has no cNvPr element"
-            ))
+            OxmlError::Parse(format!("shape at index {shape_idx} has no cNvPr element"))
         })?;
 
         // Remove any existing <a:hlinkClick> from cNvPr.
@@ -2450,9 +2414,9 @@ impl SlideDom {
     /// Returns an error if no footer placeholder exists on this slide.
     /// Sibling shapes remain byte-for-byte identical.
     pub fn set_footer_text(&mut self, text: &str) -> Result<()> {
-        let sp = self
-            .find_ph_by_type_mut("ftr")
-            .ok_or_else(|| OxmlError::Parse("slide has no footer placeholder (ph@type=\"ftr\")".into()))?;
+        let sp = self.find_ph_by_type_mut("ftr").ok_or_else(|| {
+            OxmlError::Parse("slide has no footer placeholder (ph@type=\"ftr\")".into())
+        })?;
         set_placeholder_text(sp, text)
     }
 
@@ -2462,9 +2426,9 @@ impl SlideDom {
     /// Returns an error if no slide-number placeholder exists on this slide.
     /// Sibling shapes remain byte-for-byte identical.
     pub fn set_slide_number_text(&mut self, text: &str) -> Result<()> {
-        let sp = self
-            .find_ph_by_type_mut("sldNum")
-            .ok_or_else(|| OxmlError::Parse("slide has no slide-number placeholder (ph@type=\"sldNum\")".into()))?;
+        let sp = self.find_ph_by_type_mut("sldNum").ok_or_else(|| {
+            OxmlError::Parse("slide has no slide-number placeholder (ph@type=\"sldNum\")".into())
+        })?;
         set_placeholder_text(sp, text)
     }
 
@@ -2474,9 +2438,9 @@ impl SlideDom {
     /// (or adds a `<p:sp>` visibility marker). When true, removes any visibility
     /// override. Returns an error if no slide-number placeholder exists.
     pub fn set_slide_number_visible(&mut self, visible: bool) -> Result<()> {
-        let sp = self
-            .find_ph_by_type_mut("sldNum")
-            .ok_or_else(|| OxmlError::Parse("slide has no slide-number placeholder (ph@type=\"sldNum\")".into()))?;
+        let sp = self.find_ph_by_type_mut("sldNum").ok_or_else(|| {
+            OxmlError::Parse("slide has no slide-number placeholder (ph@type=\"sldNum\")".into())
+        })?;
         set_shape_visibility(sp, visible)
     }
 
@@ -2486,25 +2450,25 @@ impl SlideDom {
     /// Returns an error if no date placeholder exists on this slide.
     /// Sibling shapes remain byte-for-byte identical.
     pub fn set_date_text(&mut self, text: &str) -> Result<()> {
-        let sp = self
-            .find_ph_by_type_mut("dt")
-            .ok_or_else(|| OxmlError::Parse("slide has no date placeholder (ph@type=\"dt\")".into()))?;
+        let sp = self.find_ph_by_type_mut("dt").ok_or_else(|| {
+            OxmlError::Parse("slide has no date placeholder (ph@type=\"dt\")".into())
+        })?;
         set_placeholder_text(sp, text)
     }
 
     /// Show or hide the footer placeholder (`ph@type="ftr"`).
     pub fn set_footer_visible(&mut self, visible: bool) -> Result<()> {
-        let sp = self
-            .find_ph_by_type_mut("ftr")
-            .ok_or_else(|| OxmlError::Parse("slide has no footer placeholder (ph@type=\"ftr\")".into()))?;
+        let sp = self.find_ph_by_type_mut("ftr").ok_or_else(|| {
+            OxmlError::Parse("slide has no footer placeholder (ph@type=\"ftr\")".into())
+        })?;
         set_shape_visibility(sp, visible)
     }
 
     /// Show or hide the date placeholder (`ph@type="dt"`).
     pub fn set_date_visible(&mut self, visible: bool) -> Result<()> {
-        let sp = self
-            .find_ph_by_type_mut("dt")
-            .ok_or_else(|| OxmlError::Parse("slide has no date placeholder (ph@type=\"dt\")".into()))?;
+        let sp = self.find_ph_by_type_mut("dt").ok_or_else(|| {
+            OxmlError::Parse("slide has no date placeholder (ph@type=\"dt\")".into())
+        })?;
         set_shape_visibility(sp, visible)
     }
 }
@@ -2658,7 +2622,8 @@ fn set_rpr_color(rpr: &mut Element, hex: &str) {
     let fill_xml = format!("<a:solidFill><a:srgbClr val=\"{val}\"/></a:solidFill>");
     let fill = parse_fragment(&fill_xml);
     // Remove any existing fill element (solidFill/noFill/gradFill/...).
-    rpr.children.retain(|n| !matches!(n, Node::Element(e) if is_fill(e.local_name())));
+    rpr.children
+        .retain(|n| !matches!(n, Node::Element(e) if is_fill(e.local_name())));
     let pos = rpr
         .children
         .iter()
@@ -2678,7 +2643,8 @@ fn set_rpr_theme_color(rpr: &mut Element, sc: SchemeColor) {
     );
     let fill = parse_fragment(&fill_xml);
     // Remove any existing fill element (solidFill/noFill/gradFill/...).
-    rpr.children.retain(|n| !matches!(n, Node::Element(e) if is_fill(e.local_name())));
+    rpr.children
+        .retain(|n| !matches!(n, Node::Element(e) if is_fill(e.local_name())));
     let pos = rpr
         .children
         .iter()
@@ -2692,12 +2658,16 @@ fn set_rpr_theme_color(rpr: &mut Element, sc: SchemeColor) {
 /// schema), replacing any existing `<a:latin>`.
 fn set_rpr_font(rpr: &mut Element, font: &str) {
     let latin = parse_fragment(&format!("<a:latin typeface=\"{}\"/>", escape_attr(font)));
-    rpr.children.retain(|n| !matches!(n, Node::Element(e) if e.local_name() == b"latin"));
+    rpr.children
+        .retain(|n| !matches!(n, Node::Element(e) if e.local_name() == b"latin"));
     rpr.children.push(latin);
 }
 
 fn is_fill(local: &[u8]) -> bool {
-    matches!(local, b"noFill" | b"solidFill" | b"gradFill" | b"blipFill" | b"pattFill" | b"grpFill")
+    matches!(
+        local,
+        b"noFill" | b"solidFill" | b"gradFill" | b"blipFill" | b"pattFill" | b"grpFill"
+    )
 }
 
 /// Build the XML fragment for a color spec: either `<a:srgbClr val="..."/>`
@@ -2708,9 +2678,7 @@ fn build_color_element(color: &ColorSpec) -> Node {
             let val = hex.trim_start_matches('#').to_uppercase();
             parse_fragment(&format!("<a:srgbClr val=\"{val}\"/>"))
         }
-        ColorSpec::Theme(sc) => {
-            parse_fragment(&format!("<a:schemeClr val=\"{}\"/>", sc.val()))
-        }
+        ColorSpec::Theme(sc) => parse_fragment(&format!("<a:schemeClr val=\"{}\"/>", sc.val())),
     }
 }
 
@@ -2789,7 +2757,11 @@ fn build_line_element(line: &LineSpec) -> Node {
             ln.children.push(Node::Element(no_fill));
             Node::Element(ln)
         }
-        LineSpec::Styled { color, width_emu, dash } => {
+        LineSpec::Styled {
+            color,
+            width_emu,
+            dash,
+        } => {
             // <a:ln w="..."><a:solidFill>...</a:solidFill><a:prstDash val="..."/></a:ln>
             let mut ln = new_element(b"a:ln");
             ln.set_attr(b"w", width_emu.to_string().as_bytes());
@@ -2822,11 +2794,18 @@ fn parse_fragment(xml: &str) -> Node {
 
 /// Minimal attribute-value escape for authored typeface names.
 fn escape_attr(s: &str) -> String {
-    s.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;")
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
 }
 
 /// Build an `<a:p>` with optional pPr template (level applied) and one run.
-fn make_paragraph(text: &str, level: u8, ppr_tmpl: &Option<Element>, rpr_tmpl: &Option<Element>) -> Element {
+fn make_paragraph(
+    text: &str,
+    level: u8,
+    ppr_tmpl: &Option<Element>,
+    rpr_tmpl: &Option<Element>,
+) -> Element {
     let mut p = new_element(b"a:p");
     // Paragraph properties: clone the template (preserving bullet/indent styling)
     // and set the outline level; omit pPr entirely for a clean level-0 paragraph
@@ -2846,7 +2825,8 @@ fn make_paragraph(text: &str, level: u8, ppr_tmpl: &Option<Element>, rpr_tmpl: &
         ppr.set_attr(b"lvl", level.to_string().as_bytes());
         p.children.push(Node::Element(ppr));
     }
-    p.children.push(Node::Element(make_run(text, rpr_tmpl.clone())));
+    p.children
+        .push(Node::Element(make_run(text, rpr_tmpl.clone())));
     p
 }
 
@@ -2873,7 +2853,9 @@ fn set_shape_text(sp: &mut Element, text: &str) -> Result<()> {
         Node::Element(e) => e.local_name() != b"r",
         Node::Raw(_) => true,
     });
-    first_p.children.push(Node::Element(make_run(text, preserved_rpr)));
+    first_p
+        .children
+        .push(Node::Element(make_run(text, preserved_rpr)));
     Ok(())
 }
 
@@ -2904,7 +2886,9 @@ fn new_element(name: &[u8]) -> Element {
 /// Recursively track the maximum `p:cNvPr@id` in a subtree.
 fn collect_max_cnvpr_id(el: &Element, max: &mut u32) {
     if el.local_name() == b"cNvPr"
-        && let Some(id) = el.attr(b"id").and_then(|v| std::str::from_utf8(v).ok()?.parse::<u32>().ok())
+        && let Some(id) = el
+            .attr(b"id")
+            .and_then(|v| std::str::from_utf8(v).ok()?.parse::<u32>().ok())
     {
         *max = (*max).max(id);
     }
@@ -2931,29 +2915,29 @@ fn extract_shape_info(el: &Element) -> ShapeInfo {
         .unwrap_or_default();
 
     // Geometry from xfrm (inside spPr or grpSpPr).
-    let geometry = el
-        .find_descendant(b"xfrm")
-        .and_then(|xfrm| {
-            let off = xfrm
-                .children
-                .iter()
-                .find_map(|n| match n {
-                    Node::Element(e) if e.local_name() == b"off" => Some(e),
-                    _ => None,
-                })?;
-            let ext = xfrm
-                .children
-                .iter()
-                .find_map(|n| match n {
-                    Node::Element(e) if e.local_name() == b"ext" => Some(e),
-                    _ => None,
-                })?;
-            let x = off.attr(b"x").and_then(|v| std::str::from_utf8(v).ok()?.parse::<i64>().ok())?;
-            let y = off.attr(b"y").and_then(|v| std::str::from_utf8(v).ok()?.parse::<i64>().ok())?;
-            let cx = ext.attr(b"cx").and_then(|v| std::str::from_utf8(v).ok()?.parse::<i64>().ok())?;
-            let cy = ext.attr(b"cy").and_then(|v| std::str::from_utf8(v).ok()?.parse::<i64>().ok())?;
-            Some((x, y, cx, cy))
-        });
+    let geometry = el.find_descendant(b"xfrm").and_then(|xfrm| {
+        let off = xfrm.children.iter().find_map(|n| match n {
+            Node::Element(e) if e.local_name() == b"off" => Some(e),
+            _ => None,
+        })?;
+        let ext = xfrm.children.iter().find_map(|n| match n {
+            Node::Element(e) if e.local_name() == b"ext" => Some(e),
+            _ => None,
+        })?;
+        let x = off
+            .attr(b"x")
+            .and_then(|v| std::str::from_utf8(v).ok()?.parse::<i64>().ok())?;
+        let y = off
+            .attr(b"y")
+            .and_then(|v| std::str::from_utf8(v).ok()?.parse::<i64>().ok())?;
+        let cx = ext
+            .attr(b"cx")
+            .and_then(|v| std::str::from_utf8(v).ok()?.parse::<i64>().ok())?;
+        let cy = ext
+            .attr(b"cy")
+            .and_then(|v| std::str::from_utf8(v).ok()?.parse::<i64>().ok())?;
+        Some((x, y, cx, cy))
+    });
 
     // Text from txBody: concatenate all paragraphs' run text.
     let text = el.find_descendant(b"txBody").map(|tx| {
@@ -2964,9 +2948,14 @@ fn extract_shape_info(el: &Element) -> ShapeInfo {
         lines.join("\n")
     });
 
-    ShapeInfo { id, name, shape_type, geometry, text }
+    ShapeInfo {
+        id,
+        name,
+        shape_type,
+        geometry,
+        text,
+    }
 }
-
 
 /// Concatenated text of a paragraph's runs (`a:r > a:t`).
 fn paragraph_text(p: &Element) -> String {
@@ -3084,9 +3073,8 @@ fn nth_run_child_position(para: &Element, run_idx: usize) -> Result<usize> {
 /// Removes any existing element with the same name, then inserts in schema order.
 fn set_spacing_child(ppr: &mut Element, local_name: &[u8], value: SpacingValue) {
     // Remove existing element with this name.
-    ppr.children.retain(|n| {
-        !matches!(n, Node::Element(e) if e.local_name() == local_name)
-    });
+    ppr.children
+        .retain(|n| !matches!(n, Node::Element(e) if e.local_name() == local_name));
 
     // Build the spacing element: <a:spcBef><a:spcPts val="..."/></a:spcBef>
     // or <a:spcBef><a:spcPct val="..."/></a:spcBef>
@@ -3118,13 +3106,10 @@ fn set_or_create_off(xfrm: &mut Element, x: i64, y: i64) {
         xfrm.self_closing = false;
         xfrm.dirty = true;
     }
-    let existing = xfrm
-        .children
-        .iter_mut()
-        .find_map(|n| match n {
-            Node::Element(e) if e.local_name() == b"off" => Some(e),
-            _ => None,
-        });
+    let existing = xfrm.children.iter_mut().find_map(|n| match n {
+        Node::Element(e) if e.local_name() == b"off" => Some(e),
+        _ => None,
+    });
     if let Some(off) = existing {
         off.set_attr(b"x", x.to_string().as_bytes());
         off.set_attr(b"y", y.to_string().as_bytes());
@@ -3146,13 +3131,10 @@ fn set_or_create_ext(xfrm: &mut Element, cx: i64, cy: i64) {
         xfrm.self_closing = false;
         xfrm.dirty = true;
     }
-    let existing = xfrm
-        .children
-        .iter_mut()
-        .find_map(|n| match n {
-            Node::Element(e) if e.local_name() == b"ext" => Some(e),
-            _ => None,
-        });
+    let existing = xfrm.children.iter_mut().find_map(|n| match n {
+        Node::Element(e) if e.local_name() == b"ext" => Some(e),
+        _ => None,
+    });
     if let Some(ext) = existing {
         ext.set_attr(b"cx", cx.to_string().as_bytes());
         ext.set_attr(b"cy", cy.to_string().as_bytes());
@@ -3289,9 +3271,8 @@ fn nth_child_position_by_name(parent: &Element, local_name: &[u8], idx: usize) -
 /// Used when merging cells to clear covered cells' content.
 fn clear_cell_content(tc: &mut Element) {
     // Remove existing txBody.
-    tc.children.retain(|n| {
-        !matches!(n, Node::Element(e) if e.local_name() == b"txBody")
-    });
+    tc.children
+        .retain(|n| !matches!(n, Node::Element(e) if e.local_name() == b"txBody"));
     // Add a fresh empty txBody.
     let mut tx_body = new_element(b"a:txBody");
 
@@ -3363,7 +3344,10 @@ mod tests {
         assert!(s.contains("<a:t>New Title</a:t>"), "{s}");
         assert!(!s.contains("Old Title"));
         // Preserved the title run's formatting (b="1") and the whole body shape.
-        assert!(s.contains(r#"<a:rPr lang="en-US" b="1"/>"#), "rPr preserved: {s}");
+        assert!(
+            s.contains(r#"<a:rPr lang="en-US" b="1"/>"#),
+            "rPr preserved: {s}"
+        );
         assert!(s.contains("<a:t>Bullet one</a:t>"), "body untouched: {s}");
         assert!(s.contains("<a:t>Bullet two</a:t>"));
         // Title shape's spPr/placeholder binding intact.
@@ -3373,7 +3357,8 @@ mod tests {
     #[test]
     fn set_body_bullets_preserves_title_and_formatting() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.set_body_bullets(&[("New A".into(), 0), ("New B".into(), 1)]).unwrap();
+        dom.set_body_bullets(&[("New A".into(), 0), ("New B".into(), 1)])
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         // New bullets present; old body text gone.
         assert!(s.contains("<a:t>New A</a:t>"), "{s}");
@@ -3392,12 +3377,26 @@ mod tests {
         // Title run already has b="1"; bolding off + italic on must mutate that
         // rPr, not duplicate it, and leave the body shape byte-identical.
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.format_placeholder("title", &RunFormat { bold: Some(false), italic: Some(true), ..Default::default() }).unwrap();
+        dom.format_placeholder(
+            "title",
+            &RunFormat {
+                bold: Some(false),
+                italic: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         // The single title rPr now carries b="0" i="1" (order: existing b first).
-        assert!(s.contains(r#"<a:rPr lang="en-US" b="0" i="1"/>"#), "title rPr mutated: {s}");
+        assert!(
+            s.contains(r#"<a:rPr lang="en-US" b="0" i="1"/>"#),
+            "title rPr mutated: {s}"
+        );
         // Body shape untouched.
-        assert!(s.contains("<a:r><a:t>Bullet one</a:t></a:r>"), "body verbatim: {s}");
+        assert!(
+            s.contains("<a:r><a:t>Bullet one</a:t></a:r>"),
+            "body verbatim: {s}"
+        );
     }
 
     #[test]
@@ -3405,12 +3404,25 @@ mod tests {
         // Body runs have no rPr; setting size must insert one as the first child
         // of each run (before a:t), preserving the text.
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.format_placeholder("body", &RunFormat { size_pt: Some(20.0), ..Default::default() }).unwrap();
+        dom.format_placeholder(
+            "body",
+            &RunFormat {
+                size_pt: Some(20.0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains(r#"<a:r><a:rPr sz="2000"/><a:t>Bullet one</a:t></a:r>"#), "rPr inserted: {s}");
+        assert!(
+            s.contains(r#"<a:r><a:rPr sz="2000"/><a:t>Bullet one</a:t></a:r>"#),
+            "rPr inserted: {s}"
+        );
         assert!(s.contains(r#"<a:r><a:rPr sz="2000"/><a:t>Bullet two</a:t></a:r>"#));
         // Title shape untouched.
-        assert!(s.contains(r#"<a:rPr lang="en-US" b="1"/>"#), "title verbatim: {s}");
+        assert!(
+            s.contains(r#"<a:rPr lang="en-US" b="1"/>"#),
+            "title verbatim: {s}"
+        );
     }
 
     #[test]
@@ -3434,11 +3446,15 @@ mod tests {
     fn format_placeholder_sets_color_and_font() {
         // Title run has rPr b="1"; add color + font → solidFill then latin children.
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.format_placeholder("title", &RunFormat {
-            color: Some("FF0000".into()),
-            font: Some("Calibri".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_placeholder(
+            "title",
+            &RunFormat {
+                color: Some("FF0000".into()),
+                font: Some("Calibri".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         // rPr opened (was self-closing) and carries both children in schema order.
         assert!(s.contains(r#"<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill><a:latin typeface="Calibri"/></a:rPr>"#), "{s}");
@@ -3454,7 +3470,10 @@ mod tests {
         let src = String::from_utf8(SLIDE.to_vec()).unwrap();
         // Everything from the body shape onward is byte-identical to the source.
         let anchor = "<p:sp><p:nvSpPr><p:cNvPr id=\"3\"";
-        assert_eq!(&out[out.find(anchor).unwrap()..], &src[src.find(anchor).unwrap()..]);
+        assert_eq!(
+            &out[out.find(anchor).unwrap()..],
+            &src[src.find(anchor).unwrap()..]
+        );
     }
 
     // ─── Paragraph-level editing tests (Req 1.1–1.4) ───────────────────────
@@ -3620,7 +3639,8 @@ mod tests {
     #[test]
     fn set_space_before_points() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.set_paragraph_space_before(1, 0, SpacingValue::Points(600)).unwrap();
+        dom.set_paragraph_space_before(1, 0, SpacingValue::Points(600))
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("a:spcBef"), "spcBef present: {s}");
         assert!(s.contains(r#"<a:spcPts val="600"/>"#), "spcPts: {s}");
@@ -3629,7 +3649,8 @@ mod tests {
     #[test]
     fn set_space_after_percent() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.set_paragraph_space_after(1, 0, SpacingValue::Percent(50000)).unwrap();
+        dom.set_paragraph_space_after(1, 0, SpacingValue::Percent(50000))
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("a:spcAft"), "spcAft present: {s}");
         assert!(s.contains(r#"<a:spcPct val="50000"/>"#), "spcPct: {s}");
@@ -3638,7 +3659,8 @@ mod tests {
     #[test]
     fn set_line_spacing() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.set_paragraph_line_spacing(1, 0, SpacingValue::Percent(150000)).unwrap();
+        dom.set_paragraph_line_spacing(1, 0, SpacingValue::Percent(150000))
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("a:lnSpc"), "lnSpc present: {s}");
         assert!(s.contains(r#"<a:spcPct val="150000"/>"#), "150%: {s}");
@@ -3647,7 +3669,8 @@ mod tests {
     #[test]
     fn set_bullet_char() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.set_paragraph_bullet(1, 0, &BulletKind::Char("•".into())).unwrap();
+        dom.set_paragraph_bullet(1, 0, &BulletKind::Char("•".into()))
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("a:buChar"), "buChar present: {s}");
     }
@@ -3655,7 +3678,8 @@ mod tests {
     #[test]
     fn set_bullet_auto_num() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.set_paragraph_bullet(1, 0, &BulletKind::AutoNum("arabicPeriod".into())).unwrap();
+        dom.set_paragraph_bullet(1, 0, &BulletKind::AutoNum("arabicPeriod".into()))
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("a:buAutoNum"), "buAutoNum present: {s}");
         assert!(s.contains(r#"type="arabicPeriod""#), "type attr: {s}");
@@ -3672,7 +3696,8 @@ mod tests {
     #[test]
     fn set_bullet_replaces_existing() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.set_paragraph_bullet(1, 0, &BulletKind::Char("-".into())).unwrap();
+        dom.set_paragraph_bullet(1, 0, &BulletKind::Char("-".into()))
+            .unwrap();
         dom.set_paragraph_bullet(1, 0, &BulletKind::None).unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("a:buNone"), "buNone present: {s}");
@@ -3682,8 +3707,10 @@ mod tests {
     #[test]
     fn spacing_in_schema_order() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        dom.set_paragraph_space_before(1, 0, SpacingValue::Points(400)).unwrap();
-        dom.set_paragraph_line_spacing(1, 0, SpacingValue::Percent(120000)).unwrap();
+        dom.set_paragraph_space_before(1, 0, SpacingValue::Points(400))
+            .unwrap();
+        dom.set_paragraph_line_spacing(1, 0, SpacingValue::Percent(120000))
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         let ln_pos = s.find("a:lnSpc").unwrap();
         let spc_pos = s.find("a:spcBef").unwrap();
@@ -3753,10 +3780,19 @@ mod tests {
         let runs = dom.runs(0, 0).unwrap();
         assert_eq!(runs.len(), 3);
         // The inserted run is first.
-        assert_eq!(runs[0].find_descendant(b"t").unwrap().text_content(), "Start ");
+        assert_eq!(
+            runs[0].find_descendant(b"t").unwrap().text_content(),
+            "Start "
+        );
         // Original runs shifted.
-        assert_eq!(runs[1].find_descendant(b"t").unwrap().text_content(), "Hello");
-        assert_eq!(runs[2].find_descendant(b"t").unwrap().text_content(), " World");
+        assert_eq!(
+            runs[1].find_descendant(b"t").unwrap().text_content(),
+            "Hello"
+        );
+        assert_eq!(
+            runs[2].find_descendant(b"t").unwrap().text_content(),
+            " World"
+        );
     }
 
     #[test]
@@ -3765,9 +3801,18 @@ mod tests {
         dom.insert_run(0, 0, 1, " Middle").unwrap();
         let runs = dom.runs(0, 0).unwrap();
         assert_eq!(runs.len(), 3);
-        assert_eq!(runs[0].find_descendant(b"t").unwrap().text_content(), "Hello");
-        assert_eq!(runs[1].find_descendant(b"t").unwrap().text_content(), " Middle");
-        assert_eq!(runs[2].find_descendant(b"t").unwrap().text_content(), " World");
+        assert_eq!(
+            runs[0].find_descendant(b"t").unwrap().text_content(),
+            "Hello"
+        );
+        assert_eq!(
+            runs[1].find_descendant(b"t").unwrap().text_content(),
+            " Middle"
+        );
+        assert_eq!(
+            runs[2].find_descendant(b"t").unwrap().text_content(),
+            " World"
+        );
     }
 
     #[test]
@@ -3792,7 +3837,10 @@ mod tests {
         dom.delete_run(0, 0, 0).unwrap();
         let runs = dom.runs(0, 0).unwrap();
         assert_eq!(runs.len(), 1);
-        assert_eq!(runs[0].find_descendant(b"t").unwrap().text_content(), " World");
+        assert_eq!(
+            runs[0].find_descendant(b"t").unwrap().text_content(),
+            " World"
+        );
     }
 
     #[test]
@@ -3929,10 +3977,16 @@ mod tests {
     #[test]
     fn strikethrough_attribute_emission() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 0, &RunFormat {
-            strikethrough: Some("sngStrike".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                strikethrough: Some("sngStrike".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"strike="sngStrike""#), "strike attr set: {s}");
     }
@@ -3940,10 +3994,16 @@ mod tests {
     #[test]
     fn strikethrough_double_strike() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 0, &RunFormat {
-            strikethrough: Some("dblStrike".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                strikethrough: Some("dblStrike".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"strike="dblStrike""#), "dblStrike: {s}");
     }
@@ -3951,10 +4011,16 @@ mod tests {
     #[test]
     fn strikethrough_no_strike() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 0, &RunFormat {
-            strikethrough: Some("noStrike".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                strikethrough: Some("noStrike".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"strike="noStrike""#), "noStrike: {s}");
     }
@@ -3962,32 +4028,56 @@ mod tests {
     #[test]
     fn baseline_superscript_emission() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 0, &RunFormat {
-            baseline: Some(30000),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                baseline: Some(30000),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains(r#"baseline="30000""#), "superscript baseline: {s}");
+        assert!(
+            s.contains(r#"baseline="30000""#),
+            "superscript baseline: {s}"
+        );
     }
 
     #[test]
     fn baseline_subscript_emission() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 0, &RunFormat {
-            baseline: Some(-25000),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                baseline: Some(-25000),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains(r#"baseline="-25000""#), "subscript baseline: {s}");
+        assert!(
+            s.contains(r#"baseline="-25000""#),
+            "subscript baseline: {s}"
+        );
     }
 
     #[test]
     fn lang_tag_emission() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 1, &RunFormat {
-            lang: Some("fr-FR".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            1,
+            &RunFormat {
+                lang: Some("fr-FR".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"lang="fr-FR""#), "lang tag set: {s}");
     }
@@ -3995,10 +4085,16 @@ mod tests {
     #[test]
     fn underline_style_sng() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 0, &RunFormat {
-            underline_style: Some("sng".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                underline_style: Some("sng".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"u="sng""#), "underline sng: {s}");
     }
@@ -4006,10 +4102,16 @@ mod tests {
     #[test]
     fn underline_style_wavy_heavy() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 0, &RunFormat {
-            underline_style: Some("wavyHeavy".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                underline_style: Some("wavyHeavy".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"u="wavyHeavy""#), "underline wavyHeavy: {s}");
     }
@@ -4017,10 +4119,16 @@ mod tests {
     #[test]
     fn underline_style_dotted() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 0, &RunFormat {
-            underline_style: Some("dotted".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                underline_style: Some("dotted".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"u="dotted""#), "underline dotted: {s}");
     }
@@ -4029,11 +4137,17 @@ mod tests {
     fn underline_style_overrides_boolean_underline() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
         // Both underline (bool) and underline_style set — style wins.
-        dom.format_run(0, 0, 0, &RunFormat {
-            underline: Some(true),
-            underline_style: Some("dbl".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                underline: Some(true),
+                underline_style: Some("dbl".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"u="dbl""#), "style overrides bool: {s}");
         // Should NOT contain u="sng" from the boolean path.
@@ -4043,10 +4157,16 @@ mod tests {
     #[test]
     fn theme_color_emits_scheme_clr_not_srgb_clr() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        dom.format_run(0, 0, 0, &RunFormat {
-            theme_color: Some(SchemeColor::Accent1),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                theme_color: Some(SchemeColor::Accent1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(
             s.contains(r#"<a:solidFill><a:schemeClr val="accent1"/></a:solidFill>"#),
@@ -4060,17 +4180,29 @@ mod tests {
     fn theme_color_replaces_existing_rgb_color() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
         // First set an RGB color.
-        dom.format_run(0, 0, 0, &RunFormat {
-            color: Some("FF0000".into()),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                color: Some("FF0000".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("srgbClr"), "RGB set first: {s}");
         // Now set a theme color — should replace the RGB fill.
-        dom.format_run(0, 0, 0, &RunFormat {
-            theme_color: Some(SchemeColor::Dk2),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                theme_color: Some(SchemeColor::Dk2),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(
             s.contains(r#"<a:solidFill><a:schemeClr val="dk2"/></a:solidFill>"#),
@@ -4083,11 +4215,17 @@ mod tests {
     fn theme_color_takes_precedence_over_color_in_same_format() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
         // Both color and theme_color set — theme_color wins (Req 2.4).
-        dom.format_run(0, 0, 0, &RunFormat {
-            color: Some("00FF00".into()),
-            theme_color: Some(SchemeColor::Accent3),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                color: Some("00FF00".into()),
+                theme_color: Some(SchemeColor::Accent3),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(
             s.contains(r#"<a:schemeClr val="accent3"/>"#),
@@ -4100,14 +4238,20 @@ mod tests {
     fn format_run_preserves_sibling_runs_byte_for_byte() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
         // Format only the first run with multiple new properties.
-        dom.format_run(0, 0, 0, &RunFormat {
-            strikethrough: Some("sngStrike".into()),
-            baseline: Some(30000),
-            lang: Some("de-DE".into()),
-            underline_style: Some("heavy".into()),
-            theme_color: Some(SchemeColor::Accent6),
-            ..Default::default()
-        }).unwrap();
+        dom.format_run(
+            0,
+            0,
+            0,
+            &RunFormat {
+                strikethrough: Some("sngStrike".into()),
+                baseline: Some(30000),
+                lang: Some("de-DE".into()),
+                underline_style: Some("heavy".into()),
+                theme_color: Some(SchemeColor::Accent6),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         // The second run must be byte-identical to the source.
         assert!(
@@ -4119,10 +4263,15 @@ mod tests {
     #[test]
     fn format_run_error_on_invalid_run_index() {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
-        let err = dom.format_run(0, 0, 99, &RunFormat {
-            bold: Some(true),
-            ..Default::default()
-        });
+        let err = dom.format_run(
+            0,
+            0,
+            99,
+            &RunFormat {
+                bold: Some(true),
+                ..Default::default()
+            },
+        );
         assert!(err.is_err());
     }
 
@@ -4131,10 +4280,15 @@ mod tests {
         let mut dom = SlideDom::parse(MULTI_RUN_SLIDE).unwrap();
         dom.insert_line_break(0, 0, 1).unwrap();
         // Run index 1 is now a line break — format_run should error.
-        let err = dom.format_run(0, 0, 1, &RunFormat {
-            bold: Some(true),
-            ..Default::default()
-        });
+        let err = dom.format_run(
+            0,
+            0,
+            1,
+            &RunFormat {
+                bold: Some(true),
+                ..Default::default()
+            },
+        );
         assert!(err.is_err());
     }
 
@@ -4147,9 +4301,18 @@ mod tests {
     #[test]
     fn set_autofit_shrink_to_fit_with_font_scale() {
         let mut dom = SlideDom::parse(AUTOFIT_SLIDE).unwrap();
-        dom.set_autofit(0, &AutoFit::ShrinkToFit { font_scale: Some(90000) }).unwrap();
+        dom.set_autofit(
+            0,
+            &AutoFit::ShrinkToFit {
+                font_scale: Some(90000),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains(r#"<a:normAutofit fontScale="90000"/>"#), "normAutofit emitted: {s}");
+        assert!(
+            s.contains(r#"<a:normAutofit fontScale="90000"/>"#),
+            "normAutofit emitted: {s}"
+        );
         // bodyPr attributes preserved.
         assert!(s.contains(r#"wrap="square""#), "wrap preserved: {s}");
         assert!(s.contains(r#"anchor="ctr""#), "anchor preserved: {s}");
@@ -4170,7 +4333,13 @@ mod tests {
     fn set_autofit_none_removes_existing() {
         // Start with normAutofit, then set None to remove it.
         let mut dom = SlideDom::parse(AUTOFIT_SLIDE).unwrap();
-        dom.set_autofit(0, &AutoFit::ShrinkToFit { font_scale: Some(80000) }).unwrap();
+        dom.set_autofit(
+            0,
+            &AutoFit::ShrinkToFit {
+                font_scale: Some(80000),
+            },
+        )
+        .unwrap();
         // Verify it was set.
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("normAutofit"), "normAutofit present: {s}");
@@ -4189,7 +4358,13 @@ mod tests {
     fn set_autofit_replaces_one_mode_with_another() {
         let mut dom = SlideDom::parse(AUTOFIT_SLIDE).unwrap();
         // Set shrink-to-fit first.
-        dom.set_autofit(0, &AutoFit::ShrinkToFit { font_scale: Some(75000) }).unwrap();
+        dom.set_autofit(
+            0,
+            &AutoFit::ShrinkToFit {
+                font_scale: Some(75000),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("normAutofit"), "normAutofit set: {s}");
         // Replace with resize-shape.
@@ -4205,11 +4380,20 @@ mod tests {
         let xml = br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="Shape 1"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr wrap="square"><a:noAutofit/><a:prstTxWarp prst="textNoShape"><a:avLst/></a:prstTxWarp></a:bodyPr><a:lstStyle/><a:p><a:r><a:t>Hi</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>"#;
         let mut dom = SlideDom::parse(xml).unwrap();
-        dom.set_autofit(0, &AutoFit::ShrinkToFit { font_scale: Some(62500) }).unwrap();
+        dom.set_autofit(
+            0,
+            &AutoFit::ShrinkToFit {
+                font_scale: Some(62500),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         // noAutofit removed, normAutofit inserted.
         assert!(!s.contains("noAutofit"), "noAutofit removed: {s}");
-        assert!(s.contains(r#"<a:normAutofit fontScale="62500"/>"#), "normAutofit: {s}");
+        assert!(
+            s.contains(r#"<a:normAutofit fontScale="62500"/>"#),
+            "normAutofit: {s}"
+        );
         // Other bodyPr child (prstTxWarp) preserved.
         assert!(s.contains("prstTxWarp"), "prstTxWarp preserved: {s}");
         // bodyPr attribute preserved.
@@ -4230,18 +4414,31 @@ mod tests {
     #[test]
     fn set_autofit_shrink_to_fit_omits_font_scale_when_none() {
         let mut dom = SlideDom::parse(AUTOFIT_SLIDE).unwrap();
-        dom.set_autofit(0, &AutoFit::ShrinkToFit { font_scale: None }).unwrap();
+        dom.set_autofit(0, &AutoFit::ShrinkToFit { font_scale: None })
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains("<a:normAutofit/>"), "normAutofit without fontScale: {s}");
+        assert!(
+            s.contains("<a:normAutofit/>"),
+            "normAutofit without fontScale: {s}"
+        );
         assert!(!s.contains("fontScale"), "no fontScale attr: {s}");
     }
 
     #[test]
     fn set_autofit_shrink_to_fit_omits_font_scale_when_100000() {
         let mut dom = SlideDom::parse(AUTOFIT_SLIDE).unwrap();
-        dom.set_autofit(0, &AutoFit::ShrinkToFit { font_scale: Some(100_000) }).unwrap();
+        dom.set_autofit(
+            0,
+            &AutoFit::ShrinkToFit {
+                font_scale: Some(100_000),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains("<a:normAutofit/>"), "normAutofit without fontScale at 100%: {s}");
+        assert!(
+            s.contains("<a:normAutofit/>"),
+            "normAutofit without fontScale at 100%: {s}"
+        );
         assert!(!s.contains("fontScale"), "no fontScale attr at 100%: {s}");
     }
 
@@ -4289,7 +4486,8 @@ mod tests {
     #[test]
     fn set_shape_geometry_sets_all_at_once() {
         let mut dom = SlideDom::parse(GEOM_SLIDE).unwrap();
-        dom.set_shape_geometry(0, 111, 222, 333, 444, Some(900000)).unwrap();
+        dom.set_shape_geometry(0, 111, 222, 333, 444, Some(900000))
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"x="111""#), "x: {s}");
         assert!(s.contains(r#"y="222""#), "y: {s}");
@@ -4387,7 +4585,11 @@ mod tests {
         let src_s0_end = src.find("<p:pic>").unwrap();
         let out_s0_start = out.find(anchor0).unwrap();
         let out_s0_end = out.find(anchor2).unwrap();
-        assert_eq!(&out[out_s0_start..out_s0_end], &src[src_s0_start..src_s0_end], "shape 0 preserved");
+        assert_eq!(
+            &out[out_s0_start..out_s0_end],
+            &src[src_s0_start..src_s0_end],
+            "shape 0 preserved"
+        );
         // Shape 2 (TextBox 3) preserved.
         assert!(out.contains("<a:t>World</a:t>"), "shape 2 text preserved");
     }
@@ -4509,11 +4711,18 @@ mod tests {
     #[test]
     fn set_shape_fill_solid_rgb() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
-        dom.set_shape_fill(0, &FillSpec::Solid {
-            color: ColorSpec::Rgb("FF0000".into()),
-        }).unwrap();
+        dom.set_shape_fill(
+            0,
+            &FillSpec::Solid {
+                color: ColorSpec::Rgb("FF0000".into()),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains(r#"<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>"#), "solid RGB fill: {s}");
+        assert!(
+            s.contains(r#"<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>"#),
+            "solid RGB fill: {s}"
+        );
         // Old fill removed.
         assert!(!s.contains(r#"val="0000FF""#), "old fill gone: {s}");
     }
@@ -4521,11 +4730,18 @@ mod tests {
     #[test]
     fn set_shape_fill_solid_theme_color() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
-        dom.set_shape_fill(0, &FillSpec::Solid {
-            color: ColorSpec::Theme(SchemeColor::Accent1),
-        }).unwrap();
+        dom.set_shape_fill(
+            0,
+            &FillSpec::Solid {
+                color: ColorSpec::Theme(SchemeColor::Accent1),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains(r#"<a:solidFill><a:schemeClr val="accent1"/></a:solidFill>"#), "theme color fill: {s}");
+        assert!(
+            s.contains(r#"<a:solidFill><a:schemeClr val="accent1"/></a:solidFill>"#),
+            "theme color fill: {s}"
+        );
         // Old fill removed.
         assert!(!s.contains(r#"val="0000FF""#), "old fill gone: {s}");
     }
@@ -4533,13 +4749,17 @@ mod tests {
     #[test]
     fn set_shape_fill_gradient() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
-        dom.set_shape_fill(0, &FillSpec::Gradient {
-            stops: vec![
-                (0.0, ColorSpec::Rgb("FF0000".into())),
-                (1.0, ColorSpec::Rgb("0000FF".into())),
-            ],
-            angle_deg: 90.0,
-        }).unwrap();
+        dom.set_shape_fill(
+            0,
+            &FillSpec::Gradient {
+                stops: vec![
+                    (0.0, ColorSpec::Rgb("FF0000".into())),
+                    (1.0, ColorSpec::Rgb("0000FF".into())),
+                ],
+                angle_deg: 90.0,
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("<a:gradFill>"), "gradFill present: {s}");
         assert!(s.contains("<a:gsLst>"), "gsLst present: {s}");
@@ -4555,13 +4775,20 @@ mod tests {
     #[test]
     fn set_shape_fill_pattern() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
-        dom.set_shape_fill(0, &FillSpec::Pattern {
-            preset: "ltDnDiag".into(),
-            fg: ColorSpec::Rgb("000000".into()),
-            bg: ColorSpec::Rgb("FFFFFF".into()),
-        }).unwrap();
+        dom.set_shape_fill(
+            0,
+            &FillSpec::Pattern {
+                preset: "ltDnDiag".into(),
+                fg: ColorSpec::Rgb("000000".into()),
+                bg: ColorSpec::Rgb("FFFFFF".into()),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains(r#"<a:pattFill prst="ltDnDiag">"#), "pattFill: {s}");
+        assert!(
+            s.contains(r#"<a:pattFill prst="ltDnDiag">"#),
+            "pattFill: {s}"
+        );
         assert!(s.contains("<a:fgClr>"), "fgClr: {s}");
         assert!(s.contains("<a:bgClr>"), "bgClr: {s}");
         assert!(s.contains(r#"val="000000""#), "fg color: {s}");
@@ -4582,21 +4809,29 @@ mod tests {
     fn set_shape_fill_replaces_existing_fill_type() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
         // First set a gradient.
-        dom.set_shape_fill(0, &FillSpec::Gradient {
-            stops: vec![
-                (0.0, ColorSpec::Rgb("AABBCC".into())),
-                (1.0, ColorSpec::Rgb("DDEEFF".into())),
-            ],
-            angle_deg: 45.0,
-        }).unwrap();
+        dom.set_shape_fill(
+            0,
+            &FillSpec::Gradient {
+                stops: vec![
+                    (0.0, ColorSpec::Rgb("AABBCC".into())),
+                    (1.0, ColorSpec::Rgb("DDEEFF".into())),
+                ],
+                angle_deg: 45.0,
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("<a:gradFill>"), "gradient set: {s}");
         assert!(!s.contains("<a:solidFill>"), "solid removed: {s}");
 
         // Now replace with solid.
-        dom.set_shape_fill(0, &FillSpec::Solid {
-            color: ColorSpec::Rgb("112233".into()),
-        }).unwrap();
+        dom.set_shape_fill(
+            0,
+            &FillSpec::Solid {
+                color: ColorSpec::Rgb("112233".into()),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("<a:solidFill>"), "solid set: {s}");
         assert!(!s.contains("<a:gradFill>"), "gradient removed: {s}");
@@ -4611,9 +4846,13 @@ mod tests {
         let shape2_before = &before[before.find(shape2_anchor).unwrap()..];
 
         // Modify the first shape's fill.
-        dom.set_shape_fill(0, &FillSpec::Solid {
-            color: ColorSpec::Rgb("AABBCC".into()),
-        }).unwrap();
+        dom.set_shape_fill(
+            0,
+            &FillSpec::Solid {
+                color: ColorSpec::Rgb("AABBCC".into()),
+            },
+        )
+        .unwrap();
         let after = String::from_utf8(dom.to_bytes()).unwrap();
         let shape2_after = &after[after.find(shape2_anchor).unwrap()..];
 
@@ -4624,9 +4863,13 @@ mod tests {
     #[test]
     fn set_shape_fill_picture() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
-        dom.set_shape_fill(0, &FillSpec::Picture {
-            r_id: "rId5".into(),
-        }).unwrap();
+        dom.set_shape_fill(
+            0,
+            &FillSpec::Picture {
+                r_id: "rId5".into(),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("<a:blipFill>"), "blipFill: {s}");
         assert!(s.contains(r#"r:embed="rId5""#), "r:embed: {s}");
@@ -4638,27 +4881,44 @@ mod tests {
     fn set_shape_fill_on_shape_without_existing_fill() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
         // Shape at index 1 has no fill element.
-        dom.set_shape_fill(1, &FillSpec::Solid {
-            color: ColorSpec::Theme(SchemeColor::Dk1),
-        }).unwrap();
+        dom.set_shape_fill(
+            1,
+            &FillSpec::Solid {
+                color: ColorSpec::Theme(SchemeColor::Dk1),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains(r#"<a:solidFill><a:schemeClr val="dk1"/></a:solidFill>"#), "fill on shape 2: {s}");
+        assert!(
+            s.contains(r#"<a:solidFill><a:schemeClr val="dk1"/></a:solidFill>"#),
+            "fill on shape 2: {s}"
+        );
         // Shape 1's text still present.
-        assert!(s.contains("<a:t>World</a:t>"), "shape 2 text preserved: {s}");
+        assert!(
+            s.contains("<a:t>World</a:t>"),
+            "shape 2 text preserved: {s}"
+        );
     }
 
     #[test]
     fn set_shape_fill_schema_order_fill_after_geometry() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
-        dom.set_shape_fill(0, &FillSpec::Solid {
-            color: ColorSpec::Rgb("AABBCC".into()),
-        }).unwrap();
+        dom.set_shape_fill(
+            0,
+            &FillSpec::Solid {
+                color: ColorSpec::Rgb("AABBCC".into()),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         // In the SPPR_ORDER table: xfrm < prstGeom < solidFill.
         // So solidFill must come after prstGeom.
         let geom_pos = s.find("a:prstGeom").unwrap();
         let fill_pos = s.find("a:solidFill").unwrap();
-        assert!(fill_pos > geom_pos, "fill after geometry in schema order: {s}");
+        assert!(
+            fill_pos > geom_pos,
+            "fill after geometry in schema order: {s}"
+        );
     }
 
     // ─── Shape line tests (Req 8.2, 8.3) ───────────────────────────────────
@@ -4666,14 +4926,21 @@ mod tests {
     #[test]
     fn set_shape_line_rgb_color_and_width() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
-        dom.set_shape_line(0, &LineSpec::Styled {
-            color: ColorSpec::Rgb("FF0000".into()),
-            width_emu: 12700,
-            dash: None,
-        }).unwrap();
+        dom.set_shape_line(
+            0,
+            &LineSpec::Styled {
+                color: ColorSpec::Rgb("FF0000".into()),
+                width_emu: 12700,
+                dash: None,
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"<a:ln w="12700">"#), "ln with width: {s}");
-        assert!(s.contains(r#"<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>"#), "solid fill in ln: {s}");
+        assert!(
+            s.contains(r#"<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>"#),
+            "solid fill in ln: {s}"
+        );
         // No dash element when dash is None.
         assert!(!s.contains("a:prstDash"), "no dash: {s}");
     }
@@ -4681,24 +4948,35 @@ mod tests {
     #[test]
     fn set_shape_line_theme_color() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
-        dom.set_shape_line(0, &LineSpec::Styled {
-            color: ColorSpec::Theme(SchemeColor::Accent2),
-            width_emu: 25400,
-            dash: None,
-        }).unwrap();
+        dom.set_shape_line(
+            0,
+            &LineSpec::Styled {
+                color: ColorSpec::Theme(SchemeColor::Accent2),
+                width_emu: 25400,
+                dash: None,
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"<a:ln w="25400">"#), "ln with width: {s}");
-        assert!(s.contains(r#"<a:solidFill><a:schemeClr val="accent2"/></a:solidFill>"#), "theme color in ln: {s}");
+        assert!(
+            s.contains(r#"<a:solidFill><a:schemeClr val="accent2"/></a:solidFill>"#),
+            "theme color in ln: {s}"
+        );
     }
 
     #[test]
     fn set_shape_line_with_dash_style() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
-        dom.set_shape_line(0, &LineSpec::Styled {
-            color: ColorSpec::Rgb("00FF00".into()),
-            width_emu: 9525,
-            dash: Some("dash".into()),
-        }).unwrap();
+        dom.set_shape_line(
+            0,
+            &LineSpec::Styled {
+                color: ColorSpec::Rgb("00FF00".into()),
+                width_emu: 9525,
+                dash: Some("dash".into()),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"<a:ln w="9525">"#), "ln with width: {s}");
         assert!(s.contains(r#"<a:prstDash val="dash"/>"#), "dash style: {s}");
@@ -4716,18 +4994,25 @@ mod tests {
     fn set_shape_line_replaces_existing_line() {
         let mut dom = SlideDom::parse(FILL_SLIDE).unwrap();
         // First set a styled line.
-        dom.set_shape_line(0, &LineSpec::Styled {
-            color: ColorSpec::Rgb("AABBCC".into()),
-            width_emu: 12700,
-            dash: Some("dot".into()),
-        }).unwrap();
+        dom.set_shape_line(
+            0,
+            &LineSpec::Styled {
+                color: ColorSpec::Rgb("AABBCC".into()),
+                width_emu: 12700,
+                dash: Some("dot".into()),
+            },
+        )
+        .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"val="AABBCC""#), "first line set: {s}");
 
         // Now replace with no-line.
         dom.set_shape_line(0, &LineSpec::None).unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
-        assert!(s.contains("<a:ln><a:noFill/></a:ln>"), "replaced with no-line: {s}");
+        assert!(
+            s.contains("<a:ln><a:noFill/></a:ln>"),
+            "replaced with no-line: {s}"
+        );
         // Old line gone.
         assert!(!s.contains(r#"val="AABBCC""#), "old line removed: {s}");
         assert!(!s.contains("a:prstDash"), "old dash removed: {s}");
@@ -4742,16 +5027,23 @@ mod tests {
         let shape2_before = &before[shape2_start..];
 
         // Modify the first shape's line.
-        dom.set_shape_line(0, &LineSpec::Styled {
-            color: ColorSpec::Rgb("112233".into()),
-            width_emu: 19050,
-            dash: None,
-        }).unwrap();
+        dom.set_shape_line(
+            0,
+            &LineSpec::Styled {
+                color: ColorSpec::Rgb("112233".into()),
+                width_emu: 19050,
+                dash: None,
+            },
+        )
+        .unwrap();
 
         let after = String::from_utf8(dom.to_bytes()).unwrap();
         let shape2_after_start = after.find(r#"id="3""#).unwrap();
         let shape2_after = &after[shape2_after_start..];
-        assert_eq!(shape2_before, shape2_after, "sibling shape preserved byte-for-byte");
+        assert_eq!(
+            shape2_before, shape2_after,
+            "sibling shape preserved byte-for-byte"
+        );
     }
 
     // ─── Table editing tests (Req 6.1) ─────────────────────────────────────
@@ -4815,7 +5107,9 @@ mod tests {
         let tbl = dom.table_element(1).unwrap();
         let rows: Vec<_> = tbl.children_named(b"tr").collect();
         let new_row = rows[2];
-        let h = new_row.attr(b"h").map(|v| String::from_utf8_lossy(v).into_owned());
+        let h = new_row
+            .attr(b"h")
+            .map(|v| String::from_utf8_lossy(v).into_owned());
         assert_eq!(h.as_deref(), Some("500000"));
     }
 
@@ -4828,7 +5122,9 @@ mod tests {
         assert_eq!(rows.len(), 3);
         // The inserted row is at index 1; original row 1 (with A2/B2) is now at index 2.
         let inserted_row = rows[1];
-        let h = inserted_row.attr(b"h").map(|v| String::from_utf8_lossy(v).into_owned());
+        let h = inserted_row
+            .attr(b"h")
+            .map(|v| String::from_utf8_lossy(v).into_owned());
         assert_eq!(h.as_deref(), Some("300000"));
         // Original second row still has its content.
         let last_row = rows[2];
@@ -4882,7 +5178,11 @@ mod tests {
         let tbl = dom.table_element(1).unwrap();
         for tr in tbl.children_named(b"tr") {
             let cells: Vec<_> = tr.children_named(b"tc").collect();
-            assert_eq!(cells.len(), 3, "each row should have 3 cells after adding a column");
+            assert_eq!(
+                cells.len(),
+                3,
+                "each row should have 3 cells after adding a column"
+            );
         }
     }
 
@@ -4893,7 +5193,9 @@ mod tests {
         let tbl = dom.table_element(1).unwrap();
         let grid = tbl.children_named(b"tblGrid").next().unwrap();
         let cols: Vec<_> = grid.children_named(b"gridCol").collect();
-        let w = cols[2].attr(b"w").map(|v| String::from_utf8_lossy(v).into_owned());
+        let w = cols[2]
+            .attr(b"w")
+            .map(|v| String::from_utf8_lossy(v).into_owned());
         assert_eq!(w.as_deref(), Some("3000"));
     }
 
@@ -4992,13 +5294,19 @@ mod tests {
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         // Origin cell gets gridSpan="3", no rowSpan (since row_span == 1).
         assert!(s.contains(r#"gridSpan="3""#), "gridSpan=3: {s}");
-        assert!(!s.contains(r#"rowSpan=""#), "no rowSpan for single-row merge: {s}");
+        assert!(
+            !s.contains(r#"rowSpan=""#),
+            "no rowSpan for single-row merge: {s}"
+        );
         // Covered cells (B1, C1) get hMerge="1".
         // Count occurrences of hMerge="1".
         let h_merge_count = s.matches(r#"hMerge="1""#).count();
         assert_eq!(h_merge_count, 2, "two cells with hMerge: {s}");
         // No vMerge since it's a single-row merge.
-        assert!(!s.contains(r#"vMerge="1""#), "no vMerge for horizontal merge: {s}");
+        assert!(
+            !s.contains(r#"vMerge="1""#),
+            "no vMerge for horizontal merge: {s}"
+        );
         // Origin content preserved.
         assert!(s.contains("<a:t>A1</a:t>"), "origin preserved: {s}");
     }
@@ -5011,12 +5319,18 @@ mod tests {
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         // Origin cell gets rowSpan="3", no gridSpan (since col_span == 1).
         assert!(s.contains(r#"rowSpan="3""#), "rowSpan=3: {s}");
-        assert!(!s.contains(r#"gridSpan=""#), "no gridSpan for single-col merge: {s}");
+        assert!(
+            !s.contains(r#"gridSpan=""#),
+            "no gridSpan for single-col merge: {s}"
+        );
         // Covered cells (A2, A3) get vMerge="1".
         let v_merge_count = s.matches(r#"vMerge="1""#).count();
         assert_eq!(v_merge_count, 2, "two cells with vMerge: {s}");
         // No hMerge since it's a single-column merge.
-        assert!(!s.contains(r#"hMerge="1""#), "no hMerge for vertical merge: {s}");
+        assert!(
+            !s.contains(r#"hMerge="1""#),
+            "no hMerge for vertical merge: {s}"
+        );
         // Origin content preserved.
         assert!(s.contains("<a:t>A1</a:t>"), "origin preserved: {s}");
     }
@@ -5086,7 +5400,10 @@ mod tests {
         // The first gridCol should now have w="5000".
         assert!(s.contains(r#"<a:gridCol w="5000"/>"#), "width updated: {s}");
         // Second gridCol unchanged.
-        assert!(s.contains(r#"<a:gridCol w="2500"/>"#), "other col preserved: {s}");
+        assert!(
+            s.contains(r#"<a:gridCol w="2500"/>"#),
+            "other col preserved: {s}"
+        );
     }
 
     #[test]
@@ -5159,7 +5476,10 @@ mod tests {
         dom.set_cell_fill(1, 0, 0, &fill).unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains("a:tcPr"), "tcPr created: {s}");
-        assert!(s.contains(r#"<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>"#), "fill set: {s}");
+        assert!(
+            s.contains(r#"<a:solidFill><a:srgbClr val="FF0000"/></a:solidFill>"#),
+            "fill set: {s}"
+        );
         // Other cells preserved.
         assert!(s.contains("<a:t>B1</a:t>"), "B1 preserved: {s}");
     }
@@ -5175,7 +5495,8 @@ mod tests {
     #[test]
     fn set_cell_margins_sets_all_margin_attrs() {
         let mut dom = SlideDom::parse(TABLE_SLIDE).unwrap();
-        dom.set_cell_margins(1, 0, 0, 91440, 45720, 91440, 45720).unwrap();
+        dom.set_cell_margins(1, 0, 0, 91440, 45720, 91440, 45720)
+            .unwrap();
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(s.contains(r#"marL="91440""#), "marL set: {s}");
         assert!(s.contains(r#"marT="45720""#), "marT set: {s}");
@@ -5291,7 +5612,10 @@ mod tests {
         let out_title = &out[out.find(title_anchor).unwrap()..out.find(pic_anchor).unwrap()];
         assert_eq!(src_title, out_title, "title shape preserved");
         // TextBox shape (shape 2) preserved byte-for-byte.
-        assert!(out.contains("<a:t>World</a:t>"), "textbox text preserved: {out}");
+        assert!(
+            out.contains("<a:t>World</a:t>"),
+            "textbox text preserved: {out}"
+        );
         let tb_anchor = r#"<p:sp><p:nvSpPr><p:cNvPr id="4" name="TextBox 3"/>"#;
         let src_tb = &src[src.find(tb_anchor).unwrap()..];
         let out_tb = &out[out.find(tb_anchor).unwrap()..];
@@ -5316,7 +5640,10 @@ mod tests {
             "hlinkClick present: {s}"
         );
         // The run text is preserved.
-        assert!(s.contains("<a:t>Click here</a:t>"), "run text preserved: {s}");
+        assert!(
+            s.contains("<a:t>Click here</a:t>"),
+            "run text preserved: {s}"
+        );
         // The rPr attributes (lang, b) are preserved.
         assert!(s.contains(r#"lang="en-US""#), "lang preserved: {s}");
         assert!(s.contains(r#"b="1""#), "bold preserved: {s}");
@@ -5336,10 +5663,7 @@ mod tests {
             s.contains(r#"<a:hlinkClick r:id="rId7"/>"#),
             "new hlinkClick: {s}"
         );
-        assert!(
-            !s.contains(r#"r:id="rId3""#),
-            "old hlinkClick removed: {s}"
-        );
+        assert!(!s.contains(r#"r:id="rId3""#), "old hlinkClick removed: {s}");
         // Only one hlinkClick element in the entire document.
         assert_eq!(
             s.matches("hlinkClick").count(),
@@ -5424,10 +5748,7 @@ mod tests {
         // It should be inside the cNvPr of the first shape.
         let cnvpr_pos = s.find(r#"<p:cNvPr id="2" name="Shape 1">"#).unwrap();
         let hlink_pos = s.find(r#"<a:hlinkClick r:id="rId4"/>"#).unwrap();
-        assert!(
-            hlink_pos > cnvpr_pos,
-            "hlinkClick is inside cNvPr: {s}"
-        );
+        assert!(hlink_pos > cnvpr_pos, "hlinkClick is inside cNvPr: {s}");
     }
 
     #[test]
@@ -5474,10 +5795,7 @@ mod tests {
             s.contains(r#"<a:hlinkClick r:id="rId8" action="ppaction://hlinksldjump"/>"#),
             "new hlinkClick present: {s}"
         );
-        assert!(
-            !s.contains(r#"r:id="rId3""#),
-            "old hlinkClick removed: {s}"
-        );
+        assert!(!s.contains(r#"r:id="rId3""#), "old hlinkClick removed: {s}");
         // Only one hlinkClick in the first shape's cNvPr.
         assert_eq!(
             s.matches("hlinkClick").count(),
@@ -5522,7 +5840,9 @@ mod tests {
     #[test]
     fn add_autoshape_emits_prst_geom() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        let id = dom.add_autoshape("star5", 100000, 200000, 300000, 400000).unwrap();
+        let id = dom
+            .add_autoshape("star5", 100000, 200000, 300000, 400000)
+            .unwrap();
         assert!(id > 0);
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         assert!(
@@ -5545,12 +5865,20 @@ mod tests {
     #[test]
     fn add_autoshape_various_presets() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        for prst in &["rect", "ellipse", "roundRect", "flowChartDecision", "actionButtonHome"] {
+        for prst in &[
+            "rect",
+            "ellipse",
+            "roundRect",
+            "flowChartDecision",
+            "actionButtonHome",
+        ] {
             let id = dom.add_autoshape(prst, 0, 0, 100000, 100000).unwrap();
             assert!(id > 0);
             let s = String::from_utf8(dom.to_bytes()).unwrap();
             assert!(
-                s.contains(&format!(r#"<a:prstGeom prst="{prst}"><a:avLst/></a:prstGeom>"#)),
+                s.contains(&format!(
+                    r#"<a:prstGeom prst="{prst}"><a:avLst/></a:prstGeom>"#
+                )),
                 "prstGeom with {prst} present: {s}"
             );
         }
@@ -5572,28 +5900,39 @@ mod tests {
             s.contains(&format!(r#"<p:cNvPr id="{id}" name="Connector {id}"/>"#)),
             "cNvPr with correct id/name: {s}"
         );
-        assert!(s.contains("<p:cNvCxnSpPr/>"), "self-closing cNvCxnSpPr (no anchors): {s}");
+        assert!(
+            s.contains("<p:cNvCxnSpPr/>"),
+            "self-closing cNvCxnSpPr (no anchors): {s}"
+        );
         assert!(
             s.contains(r#"<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>"#),
             "straight preset: {s}"
         );
-        assert!(
-            s.contains(r#"<a:off x="100" y="200"/>"#),
-            "position: {s}"
-        );
-        assert!(
-            s.contains(r#"<a:ext cx="5000" cy="0"/>"#),
-            "size: {s}"
-        );
+        assert!(s.contains(r#"<a:off x="100" y="200"/>"#), "position: {s}");
+        assert!(s.contains(r#"<a:ext cx="5000" cy="0"/>"#), "size: {s}");
     }
 
     #[test]
     fn add_elbow_connector_with_anchors() {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
-        let start = ConnectorAnchor { shape_id: 2, connection_idx: 1 };
-        let end = ConnectorAnchor { shape_id: 3, connection_idx: 3 };
+        let start = ConnectorAnchor {
+            shape_id: 2,
+            connection_idx: 1,
+        };
+        let end = ConnectorAnchor {
+            shape_id: 3,
+            connection_idx: 3,
+        };
         let id = dom
-            .add_connector(ConnectorType::Elbow, Some(start), Some(end), 0, 0, 3000, 2000)
+            .add_connector(
+                ConnectorType::Elbow,
+                Some(start),
+                Some(end),
+                0,
+                0,
+                3000,
+                2000,
+            )
             .unwrap();
         assert_eq!(id, 4);
         let s = String::from_utf8(dom.to_bytes()).unwrap();
@@ -5623,14 +5962,8 @@ mod tests {
             s.contains(r#"<a:prstGeom prst="curvedConnector3"><a:avLst/></a:prstGeom>"#),
             "curved preset: {s}"
         );
-        assert!(
-            s.contains(r#"<a:off x="500" y="600"/>"#),
-            "position: {s}"
-        );
-        assert!(
-            s.contains(r#"<a:ext cx="4000" cy="3000"/>"#),
-            "size: {s}"
-        );
+        assert!(s.contains(r#"<a:off x="500" y="600"/>"#), "position: {s}");
+        assert!(s.contains(r#"<a:ext cx="4000" cy="3000"/>"#), "size: {s}");
     }
 
     #[test]
@@ -5739,7 +6072,9 @@ mod tests {
         let mut dom = SlideDom::parse(SLIDE).unwrap();
         let mut path = FreeformPath::new(500, 500);
         path.move_to(0, 0).line_to(500, 0).line_to(250, 500).close();
-        let id = dom.add_freeform(&path, 100000, 200000, 300000, 400000).unwrap();
+        let id = dom
+            .add_freeform(&path, 100000, 200000, 300000, 400000)
+            .unwrap();
         assert_eq!(id, 4); // existing shapes use ids 2 and 3
         let s = String::from_utf8(dom.to_bytes()).unwrap();
         // Verify the shape is present with correct structure.
@@ -5824,7 +6159,10 @@ mod tests {
         let result = dom.group_shapes(1);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("not a group"), "error mentions not a group: {err_msg}");
+        assert!(
+            err_msg.contains("not a group"),
+            "error mentions not a group: {err_msg}"
+        );
     }
 
     #[test]
@@ -5839,7 +6177,11 @@ mod tests {
         let dom = SlideDom::parse(SLIDE_WITH_NESTED_GROUP).unwrap();
         // Shape 0 is the outer group.
         let outer_children = dom.group_shapes(0).unwrap();
-        assert_eq!(outer_children.len(), 2, "outer group has 2 children (inner group + shape)");
+        assert_eq!(
+            outer_children.len(),
+            2,
+            "outer group has 2 children (inner group + shape)"
+        );
         // First child is the inner group.
         assert_eq!(outer_children[0].local_name(), b"grpSp");
         let inner_cnvpr = outer_children[0].find_descendant(b"cNvPr").unwrap();
@@ -5886,7 +6228,9 @@ mod tests {
         );
         // Verify the new shape is inside the grpSp (before the closing </p:grpSp>).
         let grp_end = s.find("</p:grpSp>").expect("grpSp closing tag");
-        let new_shape_pos = s.find(&format!(r#"id="{id}""#)).expect("new shape in output");
+        let new_shape_pos = s
+            .find(&format!(r#"id="{id}""#))
+            .expect("new shape in output");
         assert!(
             new_shape_pos < grp_end,
             "new shape is inside the group element"
@@ -5903,7 +6247,10 @@ mod tests {
         let result = dom.add_shape_to_group(1, "rect", 0, 0, 100, 100);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("not a group"), "error mentions not a group: {err_msg}");
+        assert!(
+            err_msg.contains("not a group"),
+            "error mentions not a group: {err_msg}"
+        );
     }
 
     #[test]
@@ -5916,7 +6263,10 @@ mod tests {
             s.contains(r#"<p:cNvPr id="5" name="Outside Shape"/>"#),
             "outside shape preserved: {s}"
         );
-        assert!(s.contains("<a:t>Outside</a:t>"), "outside shape text preserved: {s}");
+        assert!(
+            s.contains("<a:t>Outside</a:t>"),
+            "outside shape text preserved: {s}"
+        );
         // The original group children are preserved.
         assert!(s.contains(r#"name="Rect 1""#), "rect preserved: {s}");
         assert!(s.contains(r#"name="Ellipse 1""#), "ellipse preserved: {s}");

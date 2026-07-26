@@ -301,7 +301,10 @@ mod tests {
         );
         // Part-level rels survived the round trip.
         let rels = pkg2.get_part_rels("/ppt/presentation.xml").unwrap();
-        assert_eq!(rels.get_by_type(rel_types::SLIDE).unwrap().target, "slides/slide1.xml");
+        assert_eq!(
+            rels.get_by_type(rel_types::SLIDE).unwrap().target,
+            "slides/slide1.xml"
+        );
         // Iteration sees the presentation part.
         assert!(pkg2.part_names().any(|n| n == "/ppt/presentation.xml"));
     }

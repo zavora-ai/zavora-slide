@@ -62,7 +62,8 @@ pub fn assert_only_changed(
     let before_keys: Vec<&String> = before.keys().collect();
     let after_keys: Vec<&String> = after.keys().collect();
     assert_eq!(
-        before_keys, after_keys,
+        before_keys,
+        after_keys,
         "entry sets differ: before has {} entries, after has {}",
         before.len(),
         after.len()
@@ -88,8 +89,7 @@ pub fn assert_only_changed(
     }
 
     // No unexpected changes.
-    let expected_set: std::collections::HashSet<&str> =
-        expected_changed.iter().copied().collect();
+    let expected_set: std::collections::HashSet<&str> = expected_changed.iter().copied().collect();
     let unexpected: Vec<&String> = actually_changed
         .iter()
         .filter(|k| !expected_set.contains(k.as_str()))
@@ -122,20 +122,14 @@ pub fn libreoffice_load_gate(pptx_bytes: &[u8]) -> Result<(), String> {
     // Write to a temp file.
     let tmp_dir = std::env::temp_dir();
     let tmp_path = tmp_dir.join("zavora_lo_gate_test.pptx");
-    std::fs::write(&tmp_path, pptx_bytes)
-        .map_err(|e| format!("failed to write temp pptx: {e}"))?;
+    std::fs::write(&tmp_path, pptx_bytes).map_err(|e| format!("failed to write temp pptx: {e}"))?;
 
     let output_dir = tmp_dir.join("zavora_lo_gate_out");
     std::fs::create_dir_all(&output_dir)
         .map_err(|e| format!("failed to create output dir: {e}"))?;
 
     let result = std::process::Command::new("libreoffice")
-        .args([
-            "--headless",
-            "--convert-to",
-            "pdf",
-            "--outdir",
-        ])
+        .args(["--headless", "--convert-to", "pdf", "--outdir"])
         .arg(&output_dir)
         .arg(&tmp_path)
         .output();

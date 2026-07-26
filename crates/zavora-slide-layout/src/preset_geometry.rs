@@ -17,7 +17,13 @@ pub fn preset_path(name: &str, x: f64, y: f64, w: f64, h: f64) -> Option<String>
 /// Returns the SVG path data for a bounding-box rectangle (fallback for
 /// unknown presets).
 pub fn bbox_rect_path(x: f64, y: f64, w: f64, h: f64) -> String {
-    format!("M{x},{y} L{},{y} L{},{} L{x},{} Z", x + w, x + w, y + h, y + h)
+    format!(
+        "M{x},{y} L{},{y} L{},{} L{x},{} Z",
+        x + w,
+        x + w,
+        y + h,
+        y + h
+    )
 }
 
 /// Unit-square path commands for common presets. Coordinates are in [0,1]×[0,1].
@@ -36,18 +42,10 @@ fn unit_path_for(name: &str) -> Option<&'static str> {
         "triangle" | "isosTriangle" => "M0.5,0 L1,1 L0,1 Z",
         "rtTriangle" => "M0,0 L1,1 L0,1 Z",
         "diamond" => "M0.5,0 L1,0.5 L0.5,1 L0,0.5 Z",
-        "pentagon" => {
-            "M0.5,0 L0.975,0.345 L0.794,0.905 L0.206,0.905 L0.025,0.345 Z"
-        }
-        "hexagon" => {
-            "M0.25,0 L0.75,0 L1,0.5 L0.75,1 L0.25,1 L0,0.5 Z"
-        }
-        "heptagon" => {
-            "M0.5,0 L0.81,0.19 L0.97,0.61 L0.79,0.95 L0.21,0.95 L0.03,0.61 L0.19,0.19 Z"
-        }
-        "octagon" => {
-            "M0.293,0 L0.707,0 L1,0.293 L1,0.707 L0.707,1 L0.293,1 L0,0.707 L0,0.293 Z"
-        }
+        "pentagon" => "M0.5,0 L0.975,0.345 L0.794,0.905 L0.206,0.905 L0.025,0.345 Z",
+        "hexagon" => "M0.25,0 L0.75,0 L1,0.5 L0.75,1 L0.25,1 L0,0.5 Z",
+        "heptagon" => "M0.5,0 L0.81,0.19 L0.97,0.61 L0.79,0.95 L0.21,0.95 L0.03,0.61 L0.19,0.19 Z",
+        "octagon" => "M0.293,0 L0.707,0 L1,0.293 L1,0.707 L0.707,1 L0.293,1 L0,0.707 L0,0.293 Z",
         "star4" => {
             "M0.5,0 L0.625,0.375 L1,0.5 L0.625,0.625 L0.5,1 L0.375,0.625 L0,0.5 L0.375,0.375 Z"
         }
@@ -57,18 +55,10 @@ fn unit_path_for(name: &str) -> Option<&'static str> {
         "star6" => {
             "M0.5,0 L0.625,0.25 L0.933,0.25 L0.75,0.5 L0.933,0.75 L0.625,0.75 L0.5,1 L0.375,0.75 L0.067,0.75 L0.25,0.5 L0.067,0.25 L0.375,0.25 Z"
         }
-        "arrow" | "rightArrow" => {
-            "M0,0.25 L0.6,0.25 L0.6,0 L1,0.5 L0.6,1 L0.6,0.75 L0,0.75 Z"
-        }
-        "leftArrow" => {
-            "M0,0.5 L0.4,0 L0.4,0.25 L1,0.25 L1,0.75 L0.4,0.75 L0.4,1 Z"
-        }
-        "upArrow" => {
-            "M0.5,0 L1,0.4 L0.75,0.4 L0.75,1 L0.25,1 L0.25,0.4 L0,0.4 Z"
-        }
-        "downArrow" => {
-            "M0.25,0 L0.75,0 L0.75,0.6 L1,0.6 L0.5,1 L0,0.6 L0.25,0.6 Z"
-        }
+        "arrow" | "rightArrow" => "M0,0.25 L0.6,0.25 L0.6,0 L1,0.5 L0.6,1 L0.6,0.75 L0,0.75 Z",
+        "leftArrow" => "M0,0.5 L0.4,0 L0.4,0.25 L1,0.25 L1,0.75 L0.4,0.75 L0.4,1 Z",
+        "upArrow" => "M0.5,0 L1,0.4 L0.75,0.4 L0.75,1 L0.25,1 L0.25,0.4 L0,0.4 Z",
+        "downArrow" => "M0.25,0 L0.75,0 L0.75,0.6 L1,0.6 L0.5,1 L0,0.6 L0.25,0.6 Z",
         "heart" => {
             "M0.5,0.2 C0.5,0 0.75,-0.1 0.9,0.1 C1.05,0.3 1,0.5 0.5,1 C0,0.5 -0.05,0.3 0.1,0.1 C0.25,-0.1 0.5,0 0.5,0.2 Z"
         }
@@ -92,12 +82,8 @@ fn unit_path_for(name: &str) -> Option<&'static str> {
         }
         "flowChartProcess" => "M0,0 L1,0 L1,1 L0,1 Z",
         "flowChartDecision" => "M0.5,0 L1,0.5 L0.5,1 L0,0.5 Z",
-        "flowChartTerminator" => {
-            "M0.2,0 L0.8,0 C1,0 1,1 0.8,1 L0.2,1 C0,1 0,0 0.2,0 Z"
-        }
-        "callout1" | "wedgeRectCallout" => {
-            "M0,0 L1,0 L1,0.75 L0.6,0.75 L0.5,1 L0.4,0.75 L0,0.75 Z"
-        }
+        "flowChartTerminator" => "M0.2,0 L0.8,0 C1,0 1,1 0.8,1 L0.2,1 C0,1 0,0 0.2,0 Z",
+        "callout1" | "wedgeRectCallout" => "M0,0 L1,0 L1,0.75 L0.6,0.75 L0.5,1 L0.4,0.75 L0,0.75 Z",
         "roundedRect" | "snip1Rect" | "snip2SameRect" => {
             // Alias for roundRect
             "M0.167,0 L0.833,0 Q1,0 1,0.167 L1,0.833 Q1,1 0.833,1 L0.167,1 Q0,1 0,0.833 L0,0.167 Q0,0 0.167,0 Z"
@@ -263,7 +249,10 @@ mod tests {
             );
             let p = path.unwrap();
             assert!(!p.is_empty(), "path for '{name}' should not be empty");
-            assert!(p.contains('M'), "path for '{name}' should contain M command");
+            assert!(
+                p.contains('M'),
+                "path for '{name}' should contain M command"
+            );
         }
     }
 

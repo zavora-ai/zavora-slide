@@ -19,8 +19,7 @@ pub const APP_XML: &str = include_str!("parts/app.xml");
 pub const NOTES_MASTER_XML: &str = include_str!("parts/notesMaster1.xml");
 
 // Content types.
-pub const CT_SLIDE: &str =
-    "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
+pub const CT_SLIDE: &str = "application/vnd.openxmlformats-officedocument.presentationml.slide+xml";
 pub const CT_SLIDE_MASTER: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml";
 pub const CT_SLIDE_LAYOUT: &str =
@@ -32,10 +31,8 @@ pub const CT_VIEW_PROPS: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.viewProps+xml";
 pub const CT_TABLE_STYLES: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.tableStyles+xml";
-pub const CT_CORE: &str =
-    "application/vnd.openxmlformats-package.core-properties+xml";
-pub const CT_APP: &str =
-    "application/vnd.openxmlformats-officedocument.extended-properties+xml";
+pub const CT_CORE: &str = "application/vnd.openxmlformats-package.core-properties+xml";
+pub const CT_APP: &str = "application/vnd.openxmlformats-officedocument.extended-properties+xml";
 pub const CT_NOTES_SLIDE: &str =
     "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml";
 pub const CT_NOTES_MASTER: &str =

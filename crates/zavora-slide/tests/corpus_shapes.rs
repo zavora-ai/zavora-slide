@@ -163,7 +163,10 @@ fn corpus_reorder_shape_is_surgical() {
 
         let after_shapes = dom.shape_inventory();
         // After reorder, the first shape should now be at index 1.
-        assert_eq!(after_shapes[0].name, second_name, "second shape moved to front");
+        assert_eq!(
+            after_shapes[0].name, second_name,
+            "second shape moved to front"
+        );
         assert_eq!(after_shapes[1].name, first_name, "first shape moved back");
 
         let after = rebuild_with_edited_dom(&pkg, "/ppt/slides/slide1.xml", &dom);
@@ -271,8 +274,7 @@ fn corpus_shape_inventory_returns_correct_data() {
         assert!(info.id > 0, "shape has a positive id");
         assert!(!info.name.is_empty(), "shape has a name");
         assert!(
-            ["sp", "pic", "graphicFrame", "cxnSp", "grpSp"]
-                .contains(&info.shape_type.as_str()),
+            ["sp", "pic", "graphicFrame", "cxnSp", "grpSp"].contains(&info.shape_type.as_str()),
             "shape_type is a known type: {}",
             info.shape_type
         );
@@ -285,7 +287,9 @@ fn corpus_shape_inventory_returns_correct_data() {
     dom2.set_shape_position(0, 100000, 200000).unwrap();
     dom2.set_shape_size(0, 300000, 400000).unwrap();
     let inv2 = dom2.shape_inventory();
-    let geo = inv2[0].geometry.expect("geometry present after explicit set");
+    let geo = inv2[0]
+        .geometry
+        .expect("geometry present after explicit set");
     assert_eq!(geo.0, 100000, "x matches");
     assert_eq!(geo.1, 200000, "y matches");
     assert_eq!(geo.2, 300000, "cx matches");

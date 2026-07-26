@@ -57,7 +57,9 @@ fn corpus_add_autoshape_rect_round_trip() {
     let (mut dom, pkg) = open_slide_dom();
     let orig = package_entries(&pkg);
 
-    let id = dom.add_autoshape("rect", 100000, 200000, 300000, 400000).unwrap();
+    let id = dom
+        .add_autoshape("rect", 100000, 200000, 300000, 400000)
+        .unwrap();
     assert!(id > 0, "returned a valid shape id");
 
     let after = rebuild_with_edited_dom(&pkg, "/ppt/slides/slide1.xml", &dom);
@@ -83,14 +85,18 @@ fn corpus_add_autoshape_rect_round_trip() {
     let part2 = reopened.get_part("/ppt/slides/slide1.xml").unwrap();
     let dom2 = SlideDom::parse(part2).unwrap();
     let xml2 = String::from_utf8(dom2.to_bytes()).unwrap();
-    assert!(xml2.contains(r#"prst="rect""#), "rect preset persists after reopen");
+    assert!(
+        xml2.contains(r#"prst="rect""#),
+        "rect preset persists after reopen"
+    );
 }
 
 #[test]
 fn corpus_add_autoshape_ellipse_round_trip() {
     let (mut dom, pkg) = open_slide_dom();
 
-    dom.add_autoshape("ellipse", 500000, 600000, 700000, 800000).unwrap();
+    dom.add_autoshape("ellipse", 500000, 600000, 700000, 800000)
+        .unwrap();
 
     let mut buf = std::io::Cursor::new(Vec::new());
     pkg.write_to(&mut buf).unwrap();
@@ -109,7 +115,8 @@ fn corpus_add_autoshape_ellipse_round_trip() {
 fn corpus_add_autoshape_star5_round_trip() {
     let (mut dom, pkg) = open_slide_dom();
 
-    dom.add_autoshape("star5", 200000, 300000, 400000, 400000).unwrap();
+    dom.add_autoshape("star5", 200000, 300000, 400000, 400000)
+        .unwrap();
 
     let mut buf = std::io::Cursor::new(Vec::new());
     pkg.write_to(&mut buf).unwrap();
@@ -128,7 +135,8 @@ fn corpus_add_autoshape_star5_round_trip() {
 fn corpus_add_autoshape_flowchart_process_round_trip() {
     let (mut dom, pkg) = open_slide_dom();
 
-    dom.add_autoshape("flowChartProcess", 100000, 100000, 500000, 300000).unwrap();
+    dom.add_autoshape("flowChartProcess", 100000, 100000, 500000, 300000)
+        .unwrap();
 
     let mut buf = std::io::Cursor::new(Vec::new());
     pkg.write_to(&mut buf).unwrap();
@@ -158,8 +166,14 @@ fn corpus_add_connector_straight_round_trip() {
     let id = dom
         .add_connector(
             ConnectorType::Straight,
-            Some(ConnectorAnchor { shape_id: 2, connection_idx: 0 }),
-            Some(ConnectorAnchor { shape_id: 3, connection_idx: 2 }),
+            Some(ConnectorAnchor {
+                shape_id: 2,
+                connection_idx: 0,
+            }),
+            Some(ConnectorAnchor {
+                shape_id: 3,
+                connection_idx: 2,
+            }),
             100000,
             200000,
             500000,
@@ -172,7 +186,10 @@ fn corpus_add_connector_straight_round_trip() {
     assert_only_changed(&orig, &after, &["/ppt/slides/slide1.xml"]);
 
     let xml = String::from_utf8(after["/ppt/slides/slide1.xml"].clone()).unwrap();
-    assert!(xml.contains(r#"prst="straightConnector1""#), "straight connector preset");
+    assert!(
+        xml.contains(r#"prst="straightConnector1""#),
+        "straight connector preset"
+    );
     assert!(xml.contains("stCxn"), "start connection anchor present");
     assert!(xml.contains("endCxn"), "end connection anchor present");
 
@@ -187,7 +204,10 @@ fn corpus_add_connector_straight_round_trip() {
     let reopened = OpcPackage::from_reader(std::io::Cursor::new(bytes)).unwrap();
     let part2 = reopened.get_part("/ppt/slides/slide1.xml").unwrap();
     let xml2 = String::from_utf8(part2.to_vec()).unwrap();
-    assert!(xml2.contains(r#"prst="straightConnector1""#), "straight connector persists");
+    assert!(
+        xml2.contains(r#"prst="straightConnector1""#),
+        "straight connector persists"
+    );
     assert!(xml2.contains("stCxn"), "start anchor persists");
     assert!(xml2.contains("endCxn"), "end anchor persists");
 }
@@ -198,7 +218,10 @@ fn corpus_add_connector_elbow_round_trip() {
 
     dom.add_connector(
         ConnectorType::Elbow,
-        Some(ConnectorAnchor { shape_id: 2, connection_idx: 1 }),
+        Some(ConnectorAnchor {
+            shape_id: 2,
+            connection_idx: 1,
+        }),
         None,
         200000,
         300000,
@@ -217,7 +240,10 @@ fn corpus_add_connector_elbow_round_trip() {
     let reopened = OpcPackage::from_reader(std::io::Cursor::new(bytes)).unwrap();
     let part2 = reopened.get_part("/ppt/slides/slide1.xml").unwrap();
     let xml2 = String::from_utf8(part2.to_vec()).unwrap();
-    assert!(xml2.contains(r#"prst="bentConnector3""#), "elbow connector persists");
+    assert!(
+        xml2.contains(r#"prst="bentConnector3""#),
+        "elbow connector persists"
+    );
 }
 
 #[test]
@@ -227,7 +253,10 @@ fn corpus_add_connector_curved_round_trip() {
     dom.add_connector(
         ConnectorType::Curved,
         None,
-        Some(ConnectorAnchor { shape_id: 3, connection_idx: 3 }),
+        Some(ConnectorAnchor {
+            shape_id: 3,
+            connection_idx: 3,
+        }),
         300000,
         400000,
         600000,
@@ -245,7 +274,10 @@ fn corpus_add_connector_curved_round_trip() {
     let reopened = OpcPackage::from_reader(std::io::Cursor::new(bytes)).unwrap();
     let part2 = reopened.get_part("/ppt/slides/slide1.xml").unwrap();
     let xml2 = String::from_utf8(part2.to_vec()).unwrap();
-    assert!(xml2.contains(r#"prst="curvedConnector3""#), "curved connector persists");
+    assert!(
+        xml2.contains(r#"prst="curvedConnector3""#),
+        "curved connector persists"
+    );
 }
 
 // ===========================================================================
@@ -264,7 +296,9 @@ fn corpus_add_freeform_triangle_round_trip() {
     path.line_to(0, 500);
     path.close();
 
-    let id = dom.add_freeform(&path, 1000000, 1000000, 914400, 914400).unwrap();
+    let id = dom
+        .add_freeform(&path, 1000000, 1000000, 914400, 914400)
+        .unwrap();
     assert!(id > 0);
 
     let after = rebuild_with_edited_dom(&pkg, "/ppt/slides/slide1.xml", &dom);
@@ -287,7 +321,10 @@ fn corpus_add_freeform_triangle_round_trip() {
     let reopened = OpcPackage::from_reader(std::io::Cursor::new(bytes)).unwrap();
     let part2 = reopened.get_part("/ppt/slides/slide1.xml").unwrap();
     let xml2 = String::from_utf8(part2.to_vec()).unwrap();
-    assert!(xml2.contains("custGeom"), "custom geometry persists after reopen");
+    assert!(
+        xml2.contains("custGeom"),
+        "custom geometry persists after reopen"
+    );
     assert!(xml2.contains("moveTo"), "moveTo persists");
     assert!(xml2.contains("lnTo"), "lineTo persists");
     assert!(xml2.contains("close"), "close persists");
@@ -389,7 +426,10 @@ fn corpus_add_shape_to_group_round_trip() {
     assert_eq!(children2.len(), 2, "group children persist after reparse");
 
     let xml = String::from_utf8(bytes).unwrap();
-    assert!(xml.contains(r#"prst="ellipse""#), "added ellipse preset in group");
+    assert!(
+        xml.contains(r#"prst="ellipse""#),
+        "added ellipse preset in group"
+    );
 }
 
 // ===========================================================================
@@ -401,7 +441,8 @@ fn corpus_multiple_shape_types_round_trip() {
     let (mut dom, pkg) = open_slide_dom();
 
     // Add an autoshape.
-    dom.add_autoshape("roundRect", 100000, 100000, 300000, 200000).unwrap();
+    dom.add_autoshape("roundRect", 100000, 100000, 300000, 200000)
+        .unwrap();
 
     // Add a connector.
     dom.add_connector(
@@ -421,7 +462,8 @@ fn corpus_multiple_shape_types_round_trip() {
     path.line_to(400, 400);
     path.line_to(0, 400);
     path.close();
-    dom.add_freeform(&path, 700000, 100000, 400000, 400000).unwrap();
+    dom.add_freeform(&path, 700000, 100000, 400000, 400000)
+        .unwrap();
 
     // Save the package with all edits.
     let mut buf = std::io::Cursor::new(Vec::new());
@@ -436,18 +478,27 @@ fn corpus_multiple_shape_types_round_trip() {
     let part2 = reopened.get_part("/ppt/slides/slide1.xml").unwrap();
     let xml = String::from_utf8(part2.to_vec()).unwrap();
 
-    assert!(xml.contains(r#"prst="roundRect""#), "roundRect autoshape persists");
+    assert!(
+        xml.contains(r#"prst="roundRect""#),
+        "roundRect autoshape persists"
+    );
     assert!(
         xml.contains(r#"prst="straightConnector1""#),
         "straight connector persists"
     );
-    assert!(xml.contains("custGeom"), "freeform custom geometry persists");
+    assert!(
+        xml.contains("custGeom"),
+        "freeform custom geometry persists"
+    );
     assert!(xml.contains("moveTo"), "freeform moveTo persists");
     assert!(xml.contains("lnTo"), "freeform lineTo persists");
 
     // Verify the deck opens cleanly via the high-level API.
     let p = Presentation::open_from_bytes(&save_pkg_to_bytes(&reopened)).unwrap();
-    assert!(p.slide_count() > 0, "deck opens cleanly with all shape types");
+    assert!(
+        p.slide_count() > 0,
+        "deck opens cleanly with all shape types"
+    );
 }
 
 // ===========================================================================
@@ -459,8 +510,10 @@ fn corpus_shape_vocab_libreoffice_gate() {
     let (mut dom, pkg) = open_slide_dom();
 
     // Add various shape types to exercise the full vocabulary.
-    dom.add_autoshape("star5", 100000, 100000, 400000, 400000).unwrap();
-    dom.add_autoshape("flowChartProcess", 600000, 100000, 300000, 200000).unwrap();
+    dom.add_autoshape("star5", 100000, 100000, 400000, 400000)
+        .unwrap();
+    dom.add_autoshape("flowChartProcess", 600000, 100000, 300000, 200000)
+        .unwrap();
 
     dom.add_connector(
         ConnectorType::Elbow,
@@ -478,7 +531,8 @@ fn corpus_shape_vocab_libreoffice_gate() {
     path.line_to(300, 300);
     path.line_to(0, 300);
     path.close();
-    dom.add_freeform(&path, 700000, 600000, 300000, 300000).unwrap();
+    dom.add_freeform(&path, 700000, 600000, 300000, 300000)
+        .unwrap();
 
     // Rebuild the package with the edited DOM.
     let mut buf = std::io::Cursor::new(Vec::new());

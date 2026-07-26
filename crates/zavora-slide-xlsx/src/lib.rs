@@ -18,8 +18,8 @@ mod error;
 pub use error::XlsxError;
 
 use std::io::{Cursor, Write};
-use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
+use zip::write::SimpleFileOptions;
 
 /// A cell value in the workbook.
 #[derive(Debug, Clone)]
@@ -116,8 +116,8 @@ impl WorkbookBuilder {
     pub fn build(&self) -> Result<Vec<u8>, XlsxError> {
         let buf = Cursor::new(Vec::new());
         let mut zip = ZipWriter::new(buf);
-        let options = SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
         // Collect shared strings
         let shared_strings = self.collect_shared_strings();
@@ -196,7 +196,8 @@ impl WorkbookBuilder {
   <sheets>
     <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
   </sheets>
-</workbook>"#.to_string()
+</workbook>"#
+            .to_string()
     }
 
     fn workbook_rels_xml() -> String {
@@ -232,7 +233,8 @@ impl WorkbookBuilder {
   <cellXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
   </cellXfs>
-</styleSheet>"#.to_string()
+</styleSheet>"#
+            .to_string()
     }
 
     fn shared_strings_xml(strings: &[String]) -> String {
@@ -270,29 +272,21 @@ impl WorkbookBuilder {
                     }
                     CellValue::Text(s) => {
                         // Shared string reference
-                        let ssi = shared_strings
-                            .iter()
-                            .position(|x| x == s)
-                            .unwrap_or(0);
+                        let ssi = shared_strings.iter().position(|x| x == s).unwrap_or(0);
                         xml.push_str(&format!(
                             "\n      <c r=\"{}\" t=\"s\"><v>{}</v></c>",
                             cell_ref, ssi
                         ));
                     }
                     CellValue::Number(n) => {
-                        xml.push_str(&format!(
-                            "\n      <c r=\"{}\"><v>{}</v></c>",
-                            cell_ref, n
-                        ));
+                        xml.push_str(&format!("\n      <c r=\"{}\"><v>{}</v></c>", cell_ref, n));
                     }
                 }
             }
             xml.push_str("\n    </row>");
         }
 
-        xml.push_str(
-            "\n  </sheetData>\n</worksheet>",
-        );
+        xml.push_str("\n  </sheetData>\n</worksheet>");
         xml
     }
 }
@@ -403,10 +397,7 @@ mod tests {
     #[test]
     fn cell_data_present_in_sheet() {
         let bytes = WorkbookBuilder::new()
-            .set_data(
-                &["Jan", "Feb"],
-                &[("Revenue", vec![100.0, 200.0])],
-            )
+            .set_data(&["Jan", "Feb"], &[("Revenue", vec![100.0, 200.0])])
             .build()
             .unwrap();
 

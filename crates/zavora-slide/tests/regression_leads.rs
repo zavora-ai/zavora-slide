@@ -107,9 +107,7 @@ fn render_png_has_dark_pixels() {
             png::ColorType::Rgba | png::ColorType::Rgb => {
                 chunk[0] as u32 + chunk[1] as u32 + chunk[2] as u32
             }
-            png::ColorType::GrayscaleAlpha | png::ColorType::Grayscale => {
-                chunk[0] as u32 * 3
-            }
+            png::ColorType::GrayscaleAlpha | png::ColorType::Grayscale => chunk[0] as u32 * 3,
             _ => chunk[0] as u32 + chunk[1] as u32 + chunk[2] as u32,
         };
         if brightness < 384 {
@@ -170,15 +168,19 @@ fn delete_slide_removes_correct_slide() {
     // Remaining slides: original 0 is still at 0, original 2 is now at 1.
     let after_0 = p.slide(0).unwrap().text();
     let after_1 = p.slide(1).unwrap().text();
-    assert_eq!(after_0, text_0, "first slide content preserved after delete");
-    assert_eq!(after_1, text_2, "last slide content preserved (was index 2, now 1)");
+    assert_eq!(
+        after_0, text_0,
+        "first slide content preserved after delete"
+    );
+    assert_eq!(
+        after_1, text_2,
+        "last slide content preserved (was index 2, now 1)"
+    );
 
     // Round-trip: the saved file has exactly 2 slides.
     let out = reopen(p.save_to_buffer().unwrap());
-    let pres_xml = String::from_utf8(
-        out.get_part("/ppt/presentation.xml").unwrap().to_vec(),
-    )
-    .unwrap();
+    let pres_xml =
+        String::from_utf8(out.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
     assert_eq!(
         pres_xml.matches("<p:sldId ").count(),
         2,
@@ -239,10 +241,8 @@ fn duplicate_slide_creates_copy() {
 
     // Round-trip: saved file has the correct slide count.
     let out = reopen(p.save_to_buffer().unwrap());
-    let pres_xml = String::from_utf8(
-        out.get_part("/ppt/presentation.xml").unwrap().to_vec(),
-    )
-    .unwrap();
+    let pres_xml =
+        String::from_utf8(out.get_part("/ppt/presentation.xml").unwrap().to_vec()).unwrap();
     assert_eq!(
         pres_xml.matches("<p:sldId ").count(),
         original_count + 1,
@@ -286,7 +286,10 @@ fn surgical_edit_changes_only_target_part() {
     // entries (other slides, master, layouts, theme, rels, content-types) remain
     // byte-identical.
     let mut p = Presentation::open(SAMPLE).expect("open corpus deck");
-    p.slide_mut(0).unwrap().set_title("Regression Test Title").unwrap();
+    p.slide_mut(0)
+        .unwrap()
+        .set_title("Regression Test Title")
+        .unwrap();
 
     let orig = package_entries(&OpcPackage::open(SAMPLE).unwrap());
     let out = package_entries(&reopen(p.save_to_buffer().unwrap()));

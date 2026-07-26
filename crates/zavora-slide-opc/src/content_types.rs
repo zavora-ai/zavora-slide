@@ -168,14 +168,17 @@ impl ContentTypes {
     /// Add a default content type for an extension (e.g., "png" -> "image/png").
     pub fn add_default(&mut self, extension: &str, content_type: &str) {
         if !self.defaults.contains_key(extension) {
-            self.defaults.insert(extension.to_string(), content_type.to_string());
+            self.defaults
+                .insert(extension.to_string(), content_type.to_string());
             self.raw = None; // structure changed → re-serialize
         }
     }
 
     /// Add an override content type for a specific part name.
     pub fn add_override(&mut self, part_name: &str, content_type: &str) {
-        let changed = self.overrides.insert(part_name.to_string(), content_type.to_string())
+        let changed = self
+            .overrides
+            .insert(part_name.to_string(), content_type.to_string())
             != Some(content_type.to_string());
         if changed {
             self.raw = None;

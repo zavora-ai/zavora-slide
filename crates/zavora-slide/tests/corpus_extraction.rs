@@ -9,7 +9,7 @@
 //! Requirements: 25.1, 25.2, 25.3, 26.5
 
 use zavora_slide::{
-    to_markdown, to_outline, Bullet, DeckOutline, Emu, Layout, OutlineElement, Presentation,
+    Bullet, DeckOutline, Emu, Layout, OutlineElement, Presentation, to_markdown, to_outline,
 };
 
 const SAMPLE: &str = "tests/corpus/powerpoint_sample.pptx";
@@ -34,7 +34,11 @@ fn corpus_outline_slides_numbered_sequentially() {
     let p = Presentation::open(SAMPLE).unwrap();
     let outline = to_outline(&p);
     for (i, slide) in outline.slides.iter().enumerate() {
-        assert_eq!(slide.number, i + 1, "slide numbers must be 1-based sequential");
+        assert_eq!(
+            slide.number,
+            i + 1,
+            "slide numbers must be 1-based sequential"
+        );
     }
 }
 
@@ -84,7 +88,10 @@ fn corpus_outline_has_text_content() {
             _ => false,
         })
     });
-    assert!(has_free_text, "corpus deck should have 'Free text box' content in outline");
+    assert!(
+        has_free_text,
+        "corpus deck should have 'Free text box' content in outline"
+    );
 }
 
 #[test]
@@ -190,7 +197,11 @@ fn roundtrip_title_and_bullets_extracted_correctly() {
         s.set_title("Round-Trip Title").unwrap();
         s.add_bullets(&[
             Bullet::new("Alpha"),
-            Bullet { text: "Beta".into(), level: 1, bold: false },
+            Bullet {
+                text: "Beta".into(),
+                level: 1,
+                bold: false,
+            },
             Bullet::new("Gamma"),
         ])
         .unwrap();
@@ -202,15 +213,24 @@ fn roundtrip_title_and_bullets_extracted_correctly() {
     assert_eq!(outline.slides[0].elements.len(), 3);
     assert_eq!(
         outline.slides[0].elements[0],
-        OutlineElement::Paragraph { text: "Alpha".into(), level: 0 }
+        OutlineElement::Paragraph {
+            text: "Alpha".into(),
+            level: 0
+        }
     );
     assert_eq!(
         outline.slides[0].elements[1],
-        OutlineElement::Paragraph { text: "Beta".into(), level: 1 }
+        OutlineElement::Paragraph {
+            text: "Beta".into(),
+            level: 1
+        }
     );
     assert_eq!(
         outline.slides[0].elements[2],
-        OutlineElement::Paragraph { text: "Gamma".into(), level: 0 }
+        OutlineElement::Paragraph {
+            text: "Gamma".into(),
+            level: 0
+        }
     );
 }
 
@@ -266,7 +286,13 @@ fn roundtrip_textbox_extracted_as_shape_text() {
     p.add_slide(Layout::TitleContent);
     {
         let mut s = p.slide_mut(0).unwrap();
-        s.add_text_box("Annotation", Emu(100000), Emu(100000), Emu(2000000), Emu(500000));
+        s.add_text_box(
+            "Annotation",
+            Emu(100000),
+            Emu(100000),
+            Emu(2000000),
+            Emu(500000),
+        );
     }
 
     let outline = to_outline(&p);
@@ -274,7 +300,10 @@ fn roundtrip_textbox_extracted_as_shape_text() {
         .elements
         .iter()
         .find(|e| matches!(e, OutlineElement::ShapeText { .. }));
-    assert!(shape_el.is_some(), "text box should be extracted as ShapeText");
+    assert!(
+        shape_el.is_some(),
+        "text box should be extracted as ShapeText"
+    );
     match shape_el.unwrap() {
         OutlineElement::ShapeText { kind, text } => {
             assert_eq!(kind, "textbox");
@@ -371,7 +400,11 @@ fn json_serialization_roundtrip_rich_deck() {
         s.set_title("JSON Title").unwrap();
         s.add_bullets(&[
             Bullet::new("Item 1"),
-            Bullet { text: "Sub-item".into(), level: 1, bold: false },
+            Bullet {
+                text: "Sub-item".into(),
+                level: 1,
+                bold: false,
+            },
         ])
         .unwrap();
         s.set_notes("Note text");
@@ -400,7 +433,10 @@ fn json_serialization_roundtrip_rich_deck() {
 
     // Round-trip: deserialize and compare
     let parsed: DeckOutline = serde_json::from_str(&json).unwrap();
-    assert_eq!(parsed, outline, "JSON round-trip must produce identical DeckOutline");
+    assert_eq!(
+        parsed, outline,
+        "JSON round-trip must produce identical DeckOutline"
+    );
 }
 
 #[test]

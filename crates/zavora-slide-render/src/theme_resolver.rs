@@ -39,10 +39,16 @@ fn rgb_to_hsl(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
         return (0.0, 0.0, l);
     }
     let d = max - min;
-    let s = if l > 0.5 { d / (2.0 - max - min) } else { d / (max + min) };
+    let s = if l > 0.5 {
+        d / (2.0 - max - min)
+    } else {
+        d / (max + min)
+    };
     let h = if (max - rf).abs() < 1e-10 {
         let mut h = (gf - bf) / d;
-        if gf < bf { h += 6.0; }
+        if gf < bf {
+            h += 6.0;
+        }
         h
     } else if (max - gf).abs() < 1e-10 {
         (bf - rf) / d + 2.0
@@ -58,7 +64,11 @@ fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
         let v = (l * 255.0).round().clamp(0.0, 255.0) as u8;
         return (v, v, v);
     }
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let hn = h / 360.0;
     let r = hue_to_channel(p, q, hn + 1.0 / 3.0);
@@ -72,8 +82,12 @@ fn hsl_to_rgb(h: f64, s: f64, l: f64) -> (u8, u8, u8) {
 }
 
 fn hue_to_channel(p: f64, q: f64, mut t: f64) -> f64 {
-    if t < 0.0 { t += 1.0; }
-    if t > 1.0 { t -= 1.0; }
+    if t < 0.0 {
+        t += 1.0;
+    }
+    if t > 1.0 {
+        t -= 1.0;
+    }
     if t < 1.0 / 6.0 {
         p + (q - p) * 6.0 * t
     } else if t < 0.5 {
@@ -196,9 +210,9 @@ impl ThemeColorScheme {
     /// the engine).
     pub fn office_default() -> Self {
         Self {
-            dk1: Color::BLACK,                                  // sysClr windowText → 000000
+            dk1: Color::BLACK, // sysClr windowText → 000000
             dk2: Color::from_hex("1F497D").unwrap(),
-            lt1: Color::WHITE,                                  // sysClr window → FFFFFF
+            lt1: Color::WHITE, // sysClr window → FFFFFF
             lt2: Color::from_hex("EEECE1").unwrap(),
             accent1: Color::from_hex("4F81BD").unwrap(),
             accent2: Color::from_hex("C0504D").unwrap(),
@@ -406,18 +420,54 @@ impl ColorMap {
     /// not recognized.
     pub fn set(&mut self, logical_name: &str, target: SchemeColor) -> bool {
         match logical_name {
-            "dk1" => { self.dk1 = target; true }
-            "dk2" => { self.dk2 = target; true }
-            "lt1" => { self.lt1 = target; true }
-            "lt2" => { self.lt2 = target; true }
-            "accent1" => { self.accent1 = target; true }
-            "accent2" => { self.accent2 = target; true }
-            "accent3" => { self.accent3 = target; true }
-            "accent4" => { self.accent4 = target; true }
-            "accent5" => { self.accent5 = target; true }
-            "accent6" => { self.accent6 = target; true }
-            "hlink" => { self.hlink = target; true }
-            "folHlink" => { self.fol_hlink = target; true }
+            "dk1" => {
+                self.dk1 = target;
+                true
+            }
+            "dk2" => {
+                self.dk2 = target;
+                true
+            }
+            "lt1" => {
+                self.lt1 = target;
+                true
+            }
+            "lt2" => {
+                self.lt2 = target;
+                true
+            }
+            "accent1" => {
+                self.accent1 = target;
+                true
+            }
+            "accent2" => {
+                self.accent2 = target;
+                true
+            }
+            "accent3" => {
+                self.accent3 = target;
+                true
+            }
+            "accent4" => {
+                self.accent4 = target;
+                true
+            }
+            "accent5" => {
+                self.accent5 = target;
+                true
+            }
+            "accent6" => {
+                self.accent6 = target;
+                true
+            }
+            "hlink" => {
+                self.hlink = target;
+                true
+            }
+            "folHlink" => {
+                self.fol_hlink = target;
+                true
+            }
             _ => false,
         }
     }
@@ -444,19 +494,43 @@ mod tests {
     #[test]
     fn office_default_accents_match_theme_xml() {
         let scheme = ThemeColorScheme::office_default();
-        assert_eq!(scheme.resolve(SchemeColor::Accent1), Color::from_hex("4F81BD").unwrap());
-        assert_eq!(scheme.resolve(SchemeColor::Accent2), Color::from_hex("C0504D").unwrap());
-        assert_eq!(scheme.resolve(SchemeColor::Accent3), Color::from_hex("9BBB59").unwrap());
-        assert_eq!(scheme.resolve(SchemeColor::Accent4), Color::from_hex("8064A2").unwrap());
-        assert_eq!(scheme.resolve(SchemeColor::Accent5), Color::from_hex("4BACC6").unwrap());
-        assert_eq!(scheme.resolve(SchemeColor::Accent6), Color::from_hex("F79646").unwrap());
+        assert_eq!(
+            scheme.resolve(SchemeColor::Accent1),
+            Color::from_hex("4F81BD").unwrap()
+        );
+        assert_eq!(
+            scheme.resolve(SchemeColor::Accent2),
+            Color::from_hex("C0504D").unwrap()
+        );
+        assert_eq!(
+            scheme.resolve(SchemeColor::Accent3),
+            Color::from_hex("9BBB59").unwrap()
+        );
+        assert_eq!(
+            scheme.resolve(SchemeColor::Accent4),
+            Color::from_hex("8064A2").unwrap()
+        );
+        assert_eq!(
+            scheme.resolve(SchemeColor::Accent5),
+            Color::from_hex("4BACC6").unwrap()
+        );
+        assert_eq!(
+            scheme.resolve(SchemeColor::Accent6),
+            Color::from_hex("F79646").unwrap()
+        );
     }
 
     #[test]
     fn office_default_hlink_colors() {
         let scheme = ThemeColorScheme::office_default();
-        assert_eq!(scheme.resolve(SchemeColor::Hlink), Color::from_hex("0000FF").unwrap());
-        assert_eq!(scheme.resolve(SchemeColor::FolHlink), Color::from_hex("800080").unwrap());
+        assert_eq!(
+            scheme.resolve(SchemeColor::Hlink),
+            Color::from_hex("0000FF").unwrap()
+        );
+        assert_eq!(
+            scheme.resolve(SchemeColor::FolHlink),
+            Color::from_hex("800080").unwrap()
+        );
     }
 
     #[test]
@@ -470,19 +544,24 @@ mod tests {
     #[test]
     fn from_hex_constructs_custom_scheme() {
         let scheme = ThemeColorScheme::from_hex(
-            "111111", "222222", "333333", "444444",
-            "555555", "666666", "777777", "888888",
+            "111111", "222222", "333333", "444444", "555555", "666666", "777777", "888888",
             "999999", "AAAAAA", "BBBBBB", "CCCCCC",
-        ).unwrap();
-        assert_eq!(scheme.resolve(SchemeColor::Dk1), Color::from_hex("111111").unwrap());
-        assert_eq!(scheme.resolve(SchemeColor::FolHlink), Color::from_hex("CCCCCC").unwrap());
+        )
+        .unwrap();
+        assert_eq!(
+            scheme.resolve(SchemeColor::Dk1),
+            Color::from_hex("111111").unwrap()
+        );
+        assert_eq!(
+            scheme.resolve(SchemeColor::FolHlink),
+            Color::from_hex("CCCCCC").unwrap()
+        );
     }
 
     #[test]
     fn from_hex_returns_none_on_invalid() {
         let result = ThemeColorScheme::from_hex(
-            "ZZZZZZ", "222222", "333333", "444444",
-            "555555", "666666", "777777", "888888",
+            "ZZZZZZ", "222222", "333333", "444444", "555555", "666666", "777777", "888888",
             "999999", "AAAAAA", "BBBBBB", "CCCCCC",
         );
         assert!(result.is_none());
@@ -491,9 +570,15 @@ mod tests {
     #[test]
     fn resolve_by_name_valid() {
         let scheme = ThemeColorScheme::office_default();
-        assert_eq!(scheme.resolve_by_name("accent1"), Some(Color::from_hex("4F81BD").unwrap()));
+        assert_eq!(
+            scheme.resolve_by_name("accent1"),
+            Some(Color::from_hex("4F81BD").unwrap())
+        );
         assert_eq!(scheme.resolve_by_name("dk1"), Some(Color::BLACK));
-        assert_eq!(scheme.resolve_by_name("folHlink"), Some(Color::from_hex("800080").unwrap()));
+        assert_eq!(
+            scheme.resolve_by_name("folHlink"),
+            Some(Color::from_hex("800080").unwrap())
+        );
     }
 
     #[test]
@@ -506,11 +591,14 @@ mod tests {
     #[test]
     fn custom_scheme_overrides_defaults() {
         let scheme = ThemeColorScheme::from_hex(
-            "000000", "1F497D", "FFFFFF", "EEECE1",
-            "FF0000", "C0504D", "9BBB59", "8064A2",
+            "000000", "1F497D", "FFFFFF", "EEECE1", "FF0000", "C0504D", "9BBB59", "8064A2",
             "4BACC6", "F79646", "0000FF", "800080",
-        ).unwrap();
-        assert_eq!(scheme.resolve(SchemeColor::Accent1), Color { r: 255, g: 0, b: 0 });
+        )
+        .unwrap();
+        assert_eq!(
+            scheme.resolve(SchemeColor::Accent1),
+            Color { r: 255, g: 0, b: 0 }
+        );
     }
 
     // ─── Tint/Shade/LumMod/LumOff tests ────────────────────────────────────
@@ -565,7 +653,7 @@ mod tests {
         assert_eq!(result.r, 0);
         assert_eq!(result.g, 0);
         assert!(result.b < 255); // darker than original
-        assert!(result.b > 0);   // but not black
+        assert!(result.b > 0); // but not black
     }
 
     #[test]
@@ -631,10 +719,7 @@ mod tests {
     fn combined_modifiers_lum_mod_then_lum_off() {
         // Common pattern: lumMod=75000 + lumOff=25000 (lighten a dark color)
         let color = Color::from_hex("0000FF").unwrap(); // L=0.5
-        let modifiers = &[
-            ColorModifier::LumMod(75_000),
-            ColorModifier::LumOff(25_000),
-        ];
+        let modifiers = &[ColorModifier::LumMod(75_000), ColorModifier::LumOff(25_000)];
         let result = apply_modifiers(color, modifiers);
         // After lumMod: L = 0.5 * 0.75 = 0.375
         // After lumOff: L = 0.375 + 0.25 = 0.625
@@ -647,10 +732,8 @@ mod tests {
     fn resolve_with_modifiers_applies_chain() {
         let scheme = ThemeColorScheme::office_default();
         // accent1 = 4F81BD, apply shade 50000
-        let result = scheme.resolve_with_modifiers(
-            SchemeColor::Accent1,
-            &[ColorModifier::Shade(50_000)],
-        );
+        let result =
+            scheme.resolve_with_modifiers(SchemeColor::Accent1, &[ColorModifier::Shade(50_000)]);
         let base = scheme.resolve(SchemeColor::Accent1);
         // Result should be darker than base
         let base_lum = (base.r as u32 + base.g as u32 + base.b as u32) / 3;
