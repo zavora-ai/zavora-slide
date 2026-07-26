@@ -31,7 +31,11 @@ pub struct Color {
 
 impl Color {
     pub const BLACK: Color = Color { r: 0, g: 0, b: 0 };
-    pub const WHITE: Color = Color { r: 255, g: 255, b: 255 };
+    pub const WHITE: Color = Color {
+        r: 255,
+        g: 255,
+        b: 255,
+    };
 
     /// Parse a hex color ("#RRGGBB" or "RRGGBB"). Returns `None` if malformed.
     pub fn from_hex(s: &str) -> Option<Color> {
@@ -255,7 +259,12 @@ pub struct ImageCrop {
 
 impl Default for ImageCrop {
     fn default() -> Self {
-        Self { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 }
+        Self {
+            left: 0.0,
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+        }
     }
 }
 
@@ -310,6 +319,25 @@ pub enum Item {
     },
 }
 
+/// What part of the slide an item was drawn from.
+///
+/// A scene is a flattening: one shape can produce several items — a filled box and the
+/// text inside it. Without this, a click on a drawn element cannot be traced back to
+/// anything a caller could edit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItemSource {
+    /// `shapes[index]` on the slide.
+    Shape(usize),
+    /// `images[index]`.
+    Image(usize),
+    /// `tables[index]`.
+    Table(usize),
+    /// `chart_frames[index]`.
+    Chart(usize),
+    /// The slide background, which belongs to no shape.
+    Background,
+}
+
 /// A renderable slide: its EMU dimensions, background, and items in z-order.
 #[derive(Debug, Clone)]
 pub struct Scene {
@@ -320,11 +348,50 @@ pub struct Scene {
     /// when set.
     pub rich_background: Option<Background>,
     pub items: Vec<Item>,
+    /// What each item was drawn from, aligned with `items` by position.
+    ///
+    /// Empty when nothing recorded a source, so existing callers that push directly onto
+    /// `items` behave exactly as before. Use [`Scene::push`] to keep the two aligned.
+    pub item_sources: Vec<Option<ItemSource>>,
 }
 
 impl Scene {
+    /// Add an item, recording what it was drawn from.
+    ///
+    /// Prefer this over pushing onto `items` directly: it keeps `item_sources` aligned,
+    /// which is what lets a renderer say which shape a drawn element belongs to.
+    pub fn push(&mut self, item: Item, source: Option<ItemSource>) {
+        // Backfill, so a scene that started by pushing directly onto `items` still ends
+        // up aligned rather than silently off by however many were pushed.
+        while self.item_sources.len() < self.items.len() {
+            self.item_sources.push(None);
+        }
+        self.items.push(item);
+        self.item_sources.push(source);
+    }
+
+    /// What the item at `index` was drawn from, when it is known.
+    pub fn source_of(&self, index: usize) -> Option<ItemSource> {
+        self.item_sources.get(index).copied().flatten()
+    }
+
+    /// Whether sources were recorded for every item.
+    ///
+    /// A scene is either fully attributed or not attributed at all; a half-filled map
+    /// would let a caller trust an index that means nothing.
+    pub fn is_attributed(&self) -> bool {
+        !self.items.is_empty() && self.item_sources.len() == self.items.len()
+    }
+
     pub fn new(width_emu: i64, height_emu: i64) -> Self {
-        Self { width_emu, height_emu, background: None, rich_background: None, items: Vec::new() }
+        Self {
+            width_emu,
+            height_emu,
+            background: None,
+            rich_background: None,
+            items: Vec::new(),
+            item_sources: Vec::new(),
+        }
     }
 
     /// Target pixel height for a given target width, preserving aspect ratio.
@@ -339,8 +406,14 @@ mod tests {
 
     #[test]
     fn hex_parsing() {
-        assert_eq!(Color::from_hex("#FF0000"), Some(Color { r: 255, g: 0, b: 0 }));
-        assert_eq!(Color::from_hex("00ff00"), Some(Color { r: 0, g: 255, b: 0 }));
+        assert_eq!(
+            Color::from_hex("#FF0000"),
+            Some(Color { r: 255, g: 0, b: 0 })
+        );
+        assert_eq!(
+            Color::from_hex("00ff00"),
+            Some(Color { r: 0, g: 255, b: 0 })
+        );
         assert_eq!(Color::from_hex("xyz"), None);
     }
 
@@ -350,7 +423,12 @@ mod tests {
         let scene = Scene::new(12192000, 6858000);
         assert_eq!(scene.px_height(1280), 720);
         // A 1-inch square at the origin → 1280/13.333.. ≈ 96px.
-        let r = Rect { x: 0, y: 0, w: EMU_PER_INCH, h: EMU_PER_INCH };
+        let r = Rect {
+            x: 0,
+            y: 0,
+            w: EMU_PER_INCH,
+            h: EMU_PER_INCH,
+        };
         let (_, _, w, h) = r.to_px(12192000, 1280);
         assert!((w - 96.0).abs() < 0.5);
         assert!((h - 96.0).abs() < 0.5);

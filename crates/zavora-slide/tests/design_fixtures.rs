@@ -5,12 +5,11 @@
 //!
 //! **Validates: Requirements 26.5, 27.1**
 
-use zavora_slide::{
-    apply_design_theme, apply_layout_pattern, design_lint,
-    palettes, font_pairings, palette_by_id, font_pairing_by_id,
-    LayoutPattern, PatternParams, Presentation,
-};
 use zavora_slide::qa::FindingKind;
+use zavora_slide::{
+    LayoutPattern, PatternParams, Presentation, apply_design_theme, apply_layout_pattern,
+    design_lint, font_pairing_by_id, font_pairings, palette_by_id, palettes,
+};
 use zavora_slide_layout::{Alignment, Color, Item, Rect, Scene, ShapeFill, TextLine};
 
 // ---------------------------------------------------------------------------
@@ -28,6 +27,7 @@ fn make_scene(items: Vec<Item>) -> Scene {
         background: None,
         rich_background: None,
         items,
+        item_sources: Vec::new(),
     }
 }
 
@@ -79,7 +79,11 @@ fn shape_item(x: i64, y: i64, w: i64, h: i64) -> Item {
     Item::Shape {
         rect: Rect { x, y, w, h },
         preset: None,
-        fill: ShapeFill::Solid(Color { r: 40, g: 100, b: 200 }),
+        fill: ShapeFill::Solid(Color {
+            r: 40,
+            g: 100,
+            b: 200,
+        }),
         outline: None,
         rotation_deg: 0.0,
     }
@@ -183,7 +187,10 @@ fn layout_pattern_two_column_produces_shapes() {
         font_pairing_id: Some("modern".into()),
     };
     let count = apply_pattern_shape_count(LayoutPattern::TwoColumn, &params);
-    assert!(count >= 3, "TwoColumn should produce at least 3 shapes (title + 2 columns), got {count}");
+    assert!(
+        count >= 3,
+        "TwoColumn should produce at least 3 shapes (title + 2 columns), got {count}"
+    );
 }
 
 #[test]
@@ -196,7 +203,10 @@ fn layout_pattern_icon_rows_produces_shapes() {
     };
     let count = apply_pattern_shape_count(LayoutPattern::IconRows, &params);
     // Title + (icon + text) per item = 1 + 3*2 = 7
-    assert!(count >= 4, "IconRows should produce at least 4 shapes, got {count}");
+    assert!(
+        count >= 4,
+        "IconRows should produce at least 4 shapes, got {count}"
+    );
 }
 
 #[test]
@@ -208,7 +218,10 @@ fn layout_pattern_stat_callout_produces_shapes() {
         font_pairing_id: Some("technical".into()),
     };
     let count = apply_pattern_shape_count(LayoutPattern::StatCallout, &params);
-    assert!(count >= 3, "StatCallout should produce at least 3 shapes, got {count}");
+    assert!(
+        count >= 3,
+        "StatCallout should produce at least 3 shapes, got {count}"
+    );
 }
 
 #[test]
@@ -223,7 +236,10 @@ fn layout_pattern_quote_produces_shapes() {
         font_pairing_id: Some("elegant".into()),
     };
     let count = apply_pattern_shape_count(LayoutPattern::Quote, &params);
-    assert!(count >= 2, "Quote should produce at least 2 shapes, got {count}");
+    assert!(
+        count >= 2,
+        "Quote should produce at least 2 shapes, got {count}"
+    );
 }
 
 #[test]
@@ -235,7 +251,10 @@ fn layout_pattern_section_divider_produces_shapes() {
         font_pairing_id: Some("classic".into()),
     };
     let count = apply_pattern_shape_count(LayoutPattern::SectionDivider, &params);
-    assert!(count >= 2, "SectionDivider should produce at least 2 shapes, got {count}");
+    assert!(
+        count >= 2,
+        "SectionDivider should produce at least 2 shapes, got {count}"
+    );
 }
 
 #[test]
@@ -248,7 +267,10 @@ fn layout_pattern_image_caption_produces_shapes() {
     };
     let count = apply_pattern_shape_count(LayoutPattern::ImageCaption, &params);
     // Title + image placeholder shape + caption = 3
-    assert!(count >= 3, "ImageCaption should produce at least 3 shapes, got {count}");
+    assert!(
+        count >= 3,
+        "ImageCaption should produce at least 3 shapes, got {count}"
+    );
 }
 
 // ===========================================================================
@@ -260,11 +282,17 @@ fn design_lint_fixture_text_only_slide_flagged() {
     // A slide with only text elements and no visual element (shape/image).
     let scene = make_scene(vec![
         text_item_with_lines(
-            1_000_000, 500_000, 10_000_000, 2_000_000,
+            1_000_000,
+            500_000,
+            10_000_000,
+            2_000_000,
             vec![make_title_line()],
         ),
         text_item_with_lines(
-            1_000_000, 3_000_000, 10_000_000, 3_000_000,
+            1_000_000,
+            3_000_000,
+            10_000_000,
+            3_000_000,
             vec![make_body_line_left()],
         ),
     ]);
@@ -276,7 +304,8 @@ fn design_lint_fixture_text_only_slide_flagged() {
         .collect();
 
     assert_eq!(
-        text_only.len(), 1,
+        text_only.len(),
+        1,
         "Text-only slide fixture should produce exactly one TextOnlySlide finding"
     );
     assert!(
@@ -290,11 +319,17 @@ fn design_lint_fixture_centered_body_flagged() {
     // A slide with body text that is center-aligned (anti-pattern).
     let scene = make_scene(vec![
         text_item_with_lines(
-            1_000_000, 500_000, 10_000_000, 2_000_000,
+            1_000_000,
+            500_000,
+            10_000_000,
+            2_000_000,
             vec![make_title_line()],
         ),
         text_item_with_lines(
-            1_000_000, 3_000_000, 10_000_000, 3_000_000,
+            1_000_000,
+            3_000_000,
+            10_000_000,
+            3_000_000,
             vec![make_body_line_centered()],
         ),
         shape_item(8_000_000, 1_000_000, 3_000_000, 3_000_000),
@@ -307,10 +342,15 @@ fn design_lint_fixture_centered_body_flagged() {
         .collect();
 
     assert_eq!(
-        centered.len(), 1,
+        centered.len(),
+        1,
         "Centered body fixture should produce exactly one CenteredBody finding"
     );
-    assert_eq!(centered[0].refs, vec![1], "Finding should reference the body text element");
+    assert_eq!(
+        centered[0].refs,
+        vec![1],
+        "Finding should reference the body text element"
+    );
 }
 
 #[test]
@@ -318,7 +358,10 @@ fn design_lint_fixture_too_many_fonts_flagged() {
     // A slide using 4 distinct font families (exceeds default max of 3).
     let scene = make_scene(vec![
         text_item_with_lines(
-            1_000_000, 500_000, 10_000_000, 1_500_000,
+            1_000_000,
+            500_000,
+            10_000_000,
+            1_500_000,
             vec![TextLine {
                 text: "Title".to_string(),
                 size_pt: 36.0,
@@ -330,7 +373,10 @@ fn design_lint_fixture_too_many_fonts_flagged() {
             }],
         ),
         text_item_with_lines(
-            1_000_000, 2_500_000, 5_000_000, 1_500_000,
+            1_000_000,
+            2_500_000,
+            5_000_000,
+            1_500_000,
             vec![TextLine {
                 text: "Body one".to_string(),
                 size_pt: 18.0,
@@ -342,7 +388,10 @@ fn design_lint_fixture_too_many_fonts_flagged() {
             }],
         ),
         text_item_with_lines(
-            1_000_000, 4_500_000, 5_000_000, 1_500_000,
+            1_000_000,
+            4_500_000,
+            5_000_000,
+            1_500_000,
             vec![TextLine {
                 text: "Body two".to_string(),
                 size_pt: 18.0,
@@ -354,7 +403,10 @@ fn design_lint_fixture_too_many_fonts_flagged() {
             }],
         ),
         text_item_with_lines(
-            6_000_000, 4_500_000, 5_000_000, 1_500_000,
+            6_000_000,
+            4_500_000,
+            5_000_000,
+            1_500_000,
             vec![TextLine {
                 text: "Caption".to_string(),
                 size_pt: 14.0,
@@ -375,7 +427,8 @@ fn design_lint_fixture_too_many_fonts_flagged() {
         .collect();
 
     assert_eq!(
-        too_many.len(), 1,
+        too_many.len(),
+        1,
         "Too-many-fonts fixture should produce exactly one TooManyFonts finding"
     );
     assert!(
@@ -390,7 +443,10 @@ fn design_lint_fixture_undersized_title_flagged() {
     // violating the size hierarchy.
     let scene = make_scene(vec![
         text_item_with_lines(
-            1_000_000, 500_000, 10_000_000, 2_000_000,
+            1_000_000,
+            500_000,
+            10_000_000,
+            2_000_000,
             vec![TextLine {
                 text: "Title".to_string(),
                 size_pt: 24.0, // Exactly at threshold — qualifies as title
@@ -402,7 +458,10 @@ fn design_lint_fixture_undersized_title_flagged() {
             }],
         ),
         text_item_with_lines(
-            1_000_000, 3_000_000, 10_000_000, 3_000_000,
+            1_000_000,
+            3_000_000,
+            10_000_000,
+            3_000_000,
             vec![TextLine {
                 text: "Body text that is the same size as the title".to_string(),
                 size_pt: 24.0, // Same size as title — hierarchy violated
@@ -423,7 +482,8 @@ fn design_lint_fixture_undersized_title_flagged() {
         .collect();
 
     assert_eq!(
-        undersized.len(), 1,
+        undersized.len(),
+        1,
         "Undersized title fixture should produce exactly one UndersizedTitle finding"
     );
     assert!(
@@ -443,12 +503,18 @@ fn design_lint_fixture_clean_slide_no_findings() {
     let scene = make_scene(vec![
         // Title: bold, 36pt, left-aligned
         text_item_with_lines(
-            1_000_000, 500_000, 10_000_000, 2_000_000,
+            1_000_000,
+            500_000,
+            10_000_000,
+            2_000_000,
             vec![make_title_line()],
         ),
         // Body: 18pt, left-aligned (not centered)
         text_item_with_lines(
-            1_000_000, 3_000_000, 6_000_000, 3_000_000,
+            1_000_000,
+            3_000_000,
+            6_000_000,
+            3_000_000,
             vec![make_body_line_left()],
         ),
         // Visual element (shape) — prevents TextOnlySlide
@@ -530,7 +596,10 @@ fn round_trip_preserves_theme_colors() {
 
     // Save succeeds (the theme is written into the .pptx).
     let buf = pres.save_to_buffer().expect("save should succeed");
-    assert!(buf.len() > 1000, "Saved .pptx should be a non-trivial zip file");
+    assert!(
+        buf.len() > 1000,
+        "Saved .pptx should be a non-trivial zip file"
+    );
 
     // Reopen and verify the slide is accessible (structural integrity).
     let reopened = Presentation::open_from_bytes(&buf).expect("reopen should succeed");

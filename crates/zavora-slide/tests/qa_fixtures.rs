@@ -6,7 +6,7 @@
 //! **Validates: Requirements 28.5, 29.1**
 
 use zavora_slide::qa::{
-    analyze_layout, check_contrast, compute_render_diff, ContrastConfig, FindingKind, Severity,
+    ContrastConfig, FindingKind, Severity, analyze_layout, check_contrast, compute_render_diff,
 };
 use zavora_slide_layout::{Color, Item, Rect, Scene, ShapeFill, TextLine};
 
@@ -25,6 +25,7 @@ fn make_scene(items: Vec<Item>) -> Scene {
         background: None,
         rich_background: None,
         items,
+        item_sources: Vec::new(),
     }
 }
 

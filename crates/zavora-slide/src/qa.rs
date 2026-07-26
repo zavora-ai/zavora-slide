@@ -7,7 +7,7 @@
 //!
 //! The analysis is fully deterministic — same input always produces the same output.
 
-use zavora_slide_layout::{Color, Item, Rect, Scene, ShapeFill, Background};
+use zavora_slide_layout::{Background, Color, Item, Rect, Scene, ShapeFill};
 
 // ---------------------------------------------------------------------------
 // Types
@@ -233,9 +233,16 @@ pub fn check_contrast(scene: &Scene, config: &ContrastConfig) -> Vec<Finding> {
                     message: format!(
                         "Element {} line {}: contrast ratio {:.2}:1 is below minimum {:.1}:1 \
                          (fg: #{:02X}{:02X}{:02X}, bg: #{:02X}{:02X}{:02X})",
-                        item_idx, line_idx, ratio, config.min_ratio,
-                        line.color.r, line.color.g, line.color.b,
-                        bg_color.r, bg_color.g, bg_color.b
+                        item_idx,
+                        line_idx,
+                        ratio,
+                        config.min_ratio,
+                        line.color.r,
+                        line.color.g,
+                        line.color.b,
+                        bg_color.r,
+                        bg_color.g,
+                        bg_color.b
                     ),
                 });
             }
@@ -257,11 +264,17 @@ fn resolve_effective_background(scene: &Scene, text_idx: usize, text_rect: &Rect
         let item = &scene.items[i];
         match item {
             Item::Shape { rect, fill, .. } => {
-                if rects_overlap(rect, text_rect) && let Some(color) = fill_to_color(fill) {
+                if rects_overlap(rect, text_rect)
+                    && let Some(color) = fill_to_color(fill)
+                {
                     return color;
                 }
             }
-            Item::Rect { rect, fill: Some(color), .. } if rects_overlap(rect, text_rect) => {
+            Item::Rect {
+                rect,
+                fill: Some(color),
+                ..
+            } if rects_overlap(rect, text_rect) => {
                 return *color;
             }
             _ => {}
@@ -401,10 +414,8 @@ fn check_margin_violation(elem: &ElementInfo, scene: &Scene, findings: &mut Vec<
 
     // Only flag if the element is partially on-canvas but too close to an edge.
     // Don't flag elements that are already off-canvas (they get OffCanvas finding).
-    let is_on_canvas = r.x >= 0
-        && r.y >= 0
-        && (r.x + r.w) <= scene.width_emu
-        && (r.y + r.h) <= scene.height_emu;
+    let is_on_canvas =
+        r.x >= 0 && r.y >= 0 && (r.x + r.w) <= scene.width_emu && (r.y + r.h) <= scene.height_emu;
 
     if !is_on_canvas {
         return;
@@ -751,7 +762,10 @@ fn check_text_only_slide(scene: &Scene, findings: &mut Vec<Finding>) {
     }
 
     let has_visual = scene.items.iter().any(|item| {
-        matches!(item, Item::Shape { .. } | Item::Image { .. } | Item::Rect { .. })
+        matches!(
+            item,
+            Item::Shape { .. } | Item::Image { .. } | Item::Rect { .. }
+        )
     });
 
     if !has_visual {
@@ -774,7 +788,9 @@ fn check_text_only_slide(scene: &Scene, findings: &mut Vec<Finding>) {
                 severity: Severity::Warning,
                 kind: FindingKind::TextOnlySlide,
                 refs,
-                message: "Slide contains only text elements with no visual element (shape or image)".to_string(),
+                message:
+                    "Slide contains only text elements with no visual element (shape or image)"
+                        .to_string(),
             });
         }
     }
@@ -918,7 +934,9 @@ fn check_undersized_title(scene: &Scene, findings: &mut Vec<Finding>) {
 /// A text item is considered a title if it has at least one bold line with
 /// font size >= TITLE_SIZE_THRESHOLD_PT (24pt).
 fn is_title_item(lines: &[zavora_slide_layout::TextLine]) -> bool {
-    lines.iter().any(|l| l.bold && l.size_pt >= TITLE_SIZE_THRESHOLD_PT)
+    lines
+        .iter()
+        .any(|l| l.bold && l.size_pt >= TITLE_SIZE_THRESHOLD_PT)
 }
 
 // ---------------------------------------------------------------------------
@@ -941,6 +959,7 @@ mod tests {
             background: None,
             rich_background: None,
             items,
+            item_sources: Vec::new(),
         }
     }
 
@@ -986,7 +1005,15 @@ mod tests {
         let e0 = &report.elements[0];
         assert_eq!(e0.index, 0);
         assert_eq!(e0.kind, ElementKind::Text);
-        assert_eq!(e0.bbox_emu, Rect { x: 0, y: 0, w: SLIDE_W / 2, h: SLIDE_H / 2 });
+        assert_eq!(
+            e0.bbox_emu,
+            Rect {
+                x: 0,
+                y: 0,
+                w: SLIDE_W / 2,
+                h: SLIDE_H / 2
+            }
+        );
         assert!((e0.bbox_fraction.0 - 0.0).abs() < 1e-9);
         assert!((e0.bbox_fraction.1 - 0.0).abs() < 1e-9);
         assert!((e0.bbox_fraction.2 - 0.5).abs() < 1e-9);
@@ -1006,9 +1033,7 @@ mod tests {
     #[test]
     fn off_canvas_detection() {
         // Element extends 1 EMU past the right edge.
-        let scene = make_scene(vec![
-            shape_item(SLIDE_W - 100, 0, 200, 1_000_000),
-        ]);
+        let scene = make_scene(vec![shape_item(SLIDE_W - 100, 0, 200, 1_000_000)]);
 
         let report = analyze_layout(&scene);
         let off_canvas: Vec<_> = report
@@ -1025,9 +1050,7 @@ mod tests {
     #[test]
     fn off_canvas_negative_position() {
         // Element starts at negative x.
-        let scene = make_scene(vec![
-            text_item(-100_000, 500_000, 2_000_000, 1_000_000),
-        ]);
+        let scene = make_scene(vec![text_item(-100_000, 500_000, 2_000_000, 1_000_000)]);
 
         let report = analyze_layout(&scene);
         let off_canvas: Vec<_> = report
@@ -1041,9 +1064,7 @@ mod tests {
 
     #[test]
     fn no_off_canvas_for_fully_inside_element() {
-        let scene = make_scene(vec![
-            shape_item(1_000_000, 1_000_000, 2_000_000, 2_000_000),
-        ]);
+        let scene = make_scene(vec![shape_item(1_000_000, 1_000_000, 2_000_000, 2_000_000)]);
 
         let report = analyze_layout(&scene);
         let off_canvas: Vec<_> = report
@@ -1099,8 +1120,8 @@ mod tests {
     #[test]
     fn zero_area_detection() {
         let scene = make_scene(vec![
-            text_item(100_000, 100_000, 0, 500_000),   // zero width
-            shape_item(200_000, 200_000, 500_000, 0),  // zero height
+            text_item(100_000, 100_000, 0, 500_000),  // zero width
+            shape_item(200_000, 200_000, 500_000, 0), // zero height
             image_item(300_000, 300_000, 1_000_000, 1_000_000), // normal
         ]);
 
@@ -1121,9 +1142,7 @@ mod tests {
     fn margin_violation_detection() {
         // Element very close to the left edge (within 5% of slide width).
         // 5% of SLIDE_W = 609_600 EMU. Place element at x=100_000 (< 609_600).
-        let scene = make_scene(vec![
-            text_item(100_000, 1_000_000, 2_000_000, 1_000_000),
-        ]);
+        let scene = make_scene(vec![text_item(100_000, 1_000_000, 2_000_000, 1_000_000)]);
 
         let report = analyze_layout(&scene);
         let margins: Vec<_> = report
@@ -1140,9 +1159,7 @@ mod tests {
     #[test]
     fn no_margin_violation_for_well_placed_element() {
         // Element well within margins (centered).
-        let scene = make_scene(vec![
-            shape_item(2_000_000, 2_000_000, 4_000_000, 2_000_000),
-        ]);
+        let scene = make_scene(vec![shape_item(2_000_000, 2_000_000, 4_000_000, 2_000_000)]);
 
         let report = analyze_layout(&scene);
         let margins: Vec<_> = report
@@ -1241,21 +1258,39 @@ mod tests {
 
     #[test]
     fn contrast_ratio_same_color_is_1() {
-        let color = Color { r: 128, g: 64, b: 200 };
+        let color = Color {
+            r: 128,
+            g: 64,
+            b: 200,
+        };
         let ratio = contrast_ratio(color, color);
         assert!((ratio - 1.0).abs() < 1e-9);
     }
 
     #[test]
     fn contrast_ratio_is_symmetric() {
-        let a = Color { r: 100, g: 50, b: 200 };
-        let b = Color { r: 200, g: 220, b: 240 };
+        let a = Color {
+            r: 100,
+            g: 50,
+            b: 200,
+        };
+        let b = Color {
+            r: 200,
+            g: 220,
+            b: 240,
+        };
         let ratio_ab = contrast_ratio(a, b);
         let ratio_ba = contrast_ratio(b, a);
         assert!((ratio_ab - ratio_ba).abs() < 1e-9);
     }
 
-    fn text_item_with_lines(x: i64, y: i64, w: i64, h: i64, lines: Vec<zavora_slide_layout::TextLine>) -> Item {
+    fn text_item_with_lines(
+        x: i64,
+        y: i64,
+        w: i64,
+        h: i64,
+        lines: Vec<zavora_slide_layout::TextLine>,
+    ) -> Item {
         Item::Text {
             rect: Rect { x, y, w, h },
             lines,
@@ -1275,13 +1310,18 @@ mod tests {
     #[test]
     fn low_contrast_text_is_flagged() {
         // Light gray text on white background → low contrast.
-        let light_gray = Color { r: 200, g: 200, b: 200 };
-        let scene = make_scene(vec![
-            text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 2_000_000,
-                vec![make_text_line(18.0, light_gray)],
-            ),
-        ]);
+        let light_gray = Color {
+            r: 200,
+            g: 200,
+            b: 200,
+        };
+        let scene = make_scene(vec![text_item_with_lines(
+            1_000_000,
+            1_000_000,
+            4_000_000,
+            2_000_000,
+            vec![make_text_line(18.0, light_gray)],
+        )]);
 
         let config = ContrastConfig::default();
         let findings = check_contrast(&scene, &config);
@@ -1299,12 +1339,13 @@ mod tests {
     #[test]
     fn high_contrast_text_is_not_flagged() {
         // Black text on white background → high contrast (21:1).
-        let scene = make_scene(vec![
-            text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 2_000_000,
-                vec![make_text_line(18.0, Color::BLACK)],
-            ),
-        ]);
+        let scene = make_scene(vec![text_item_with_lines(
+            1_000_000,
+            1_000_000,
+            4_000_000,
+            2_000_000,
+            vec![make_text_line(18.0, Color::BLACK)],
+        )]);
 
         let config = ContrastConfig::default();
         let findings = check_contrast(&scene, &config);
@@ -1320,12 +1361,13 @@ mod tests {
     #[test]
     fn small_font_size_is_flagged() {
         // 8pt text (below default 10pt minimum).
-        let scene = make_scene(vec![
-            text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 2_000_000,
-                vec![make_text_line(8.0, Color::BLACK)],
-            ),
-        ]);
+        let scene = make_scene(vec![text_item_with_lines(
+            1_000_000,
+            1_000_000,
+            4_000_000,
+            2_000_000,
+            vec![make_text_line(8.0, Color::BLACK)],
+        )]);
 
         let config = ContrastConfig::default();
         let findings = check_contrast(&scene, &config);
@@ -1343,12 +1385,13 @@ mod tests {
     #[test]
     fn adequate_font_size_is_not_flagged() {
         // 12pt text (above default 10pt minimum).
-        let scene = make_scene(vec![
-            text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 2_000_000,
-                vec![make_text_line(12.0, Color::BLACK)],
-            ),
-        ]);
+        let scene = make_scene(vec![text_item_with_lines(
+            1_000_000,
+            1_000_000,
+            4_000_000,
+            2_000_000,
+            vec![make_text_line(12.0, Color::BLACK)],
+        )]);
 
         let config = ContrastConfig::default();
         let findings = check_contrast(&scene, &config);
@@ -1370,13 +1413,18 @@ mod tests {
         };
 
         // Dark gray on white: contrast ~5.7:1 (below 7:1 but above default 4.5:1).
-        let dark_gray = Color { r: 90, g: 90, b: 90 };
-        let scene = make_scene(vec![
-            text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 2_000_000,
-                vec![make_text_line(12.0, dark_gray)],
-            ),
-        ]);
+        let dark_gray = Color {
+            r: 90,
+            g: 90,
+            b: 90,
+        };
+        let scene = make_scene(vec![text_item_with_lines(
+            1_000_000,
+            1_000_000,
+            4_000_000,
+            2_000_000,
+            vec![make_text_line(12.0, dark_gray)],
+        )]);
 
         let findings = check_contrast(&scene, &config);
 
@@ -1406,7 +1454,12 @@ mod tests {
             items: vec![
                 // Shape fill underneath the text.
                 Item::Shape {
-                    rect: Rect { x: 500_000, y: 500_000, w: 5_000_000, h: 3_000_000 },
+                    rect: Rect {
+                        x: 500_000,
+                        y: 500_000,
+                        w: 5_000_000,
+                        h: 3_000_000,
+                    },
                     preset: None,
                     fill: ShapeFill::Solid(blue),
                     outline: None,
@@ -1414,10 +1467,14 @@ mod tests {
                 },
                 // White text on top of the blue shape.
                 text_item_with_lines(
-                    1_000_000, 1_000_000, 3_000_000, 1_000_000,
+                    1_000_000,
+                    1_000_000,
+                    3_000_000,
+                    1_000_000,
                     vec![make_text_line(18.0, Color::WHITE)],
                 ),
             ],
+            item_sources: Vec::new(),
         };
 
         let config = ContrastConfig::default();
@@ -1435,18 +1492,24 @@ mod tests {
     #[test]
     fn contrast_uses_slide_background_when_no_underlapping_shape() {
         // Dark slide background with white text → high contrast, no flag.
-        let dark_bg = Color { r: 30, g: 30, b: 30 };
+        let dark_bg = Color {
+            r: 30,
+            g: 30,
+            b: 30,
+        };
         let scene = Scene {
             width_emu: SLIDE_W,
             height_emu: SLIDE_H,
             background: Some(dark_bg),
             rich_background: None,
-            items: vec![
-                text_item_with_lines(
-                    1_000_000, 1_000_000, 4_000_000, 2_000_000,
-                    vec![make_text_line(18.0, Color::WHITE)],
-                ),
-            ],
+            items: vec![text_item_with_lines(
+                1_000_000,
+                1_000_000,
+                4_000_000,
+                2_000_000,
+                vec![make_text_line(18.0, Color::WHITE)],
+            )],
+            item_sources: Vec::new(),
         };
 
         let config = ContrastConfig::default();
@@ -1497,9 +1560,16 @@ mod tests {
     fn make_png_with_rect(
         width: u32,
         height: u32,
-        bg_r: u8, bg_g: u8, bg_b: u8,
-        rect_x: u32, rect_y: u32, rect_w: u32, rect_h: u32,
-        rect_r: u8, rect_g: u8, rect_b: u8,
+        bg_r: u8,
+        bg_g: u8,
+        bg_b: u8,
+        rect_x: u32,
+        rect_y: u32,
+        rect_w: u32,
+        rect_h: u32,
+        rect_r: u8,
+        rect_g: u8,
+        rect_b: u8,
     ) -> Vec<u8> {
         let mut buf = Vec::new();
         {
@@ -1607,7 +1677,9 @@ mod tests {
             assert!((region.change_fraction - 1.0).abs() < 1e-9);
         }
         // Check edge tile dimensions
-        let bottom_right = diff.changed_regions.iter()
+        let bottom_right = diff
+            .changed_regions
+            .iter()
             .find(|r| r.x == 32 && r.y == 32)
             .expect("should have bottom-right tile");
         assert_eq!(bottom_right.w, 18);
@@ -1697,11 +1769,17 @@ mod tests {
         // Slide with only text items — no shape or image.
         let scene = make_scene(vec![
             text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 2_000_000,
+                1_000_000,
+                1_000_000,
+                4_000_000,
+                2_000_000,
                 vec![make_title_text_line()],
             ),
             text_item_with_lines(
-                1_000_000, 3_000_000, 4_000_000, 2_000_000,
+                1_000_000,
+                3_000_000,
+                4_000_000,
+                2_000_000,
                 vec![make_body_text_line_left()],
             ),
         ]);
@@ -1722,7 +1800,10 @@ mod tests {
         // Slide with text + a shape — should NOT be flagged as text-only.
         let scene = make_scene(vec![
             text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 2_000_000,
+                1_000_000,
+                1_000_000,
+                4_000_000,
+                2_000_000,
                 vec![make_title_text_line()],
             ),
             shape_item(6_000_000, 1_000_000, 3_000_000, 3_000_000),
@@ -1742,11 +1823,17 @@ mod tests {
         // Body text (non-title) with center alignment.
         let scene = make_scene(vec![
             text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 2_000_000,
+                1_000_000,
+                1_000_000,
+                4_000_000,
+                2_000_000,
                 vec![make_title_text_line()],
             ),
             text_item_with_lines(
-                1_000_000, 3_000_000, 4_000_000, 2_000_000,
+                1_000_000,
+                3_000_000,
+                4_000_000,
+                2_000_000,
                 vec![make_body_text_line_centered()],
             ),
             shape_item(6_000_000, 1_000_000, 3_000_000, 3_000_000),
@@ -1767,11 +1854,17 @@ mod tests {
         // Body text with left alignment — should NOT be flagged.
         let scene = make_scene(vec![
             text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 2_000_000,
+                1_000_000,
+                1_000_000,
+                4_000_000,
+                2_000_000,
                 vec![make_title_text_line()],
             ),
             text_item_with_lines(
-                1_000_000, 3_000_000, 4_000_000, 2_000_000,
+                1_000_000,
+                3_000_000,
+                4_000_000,
+                2_000_000,
                 vec![make_body_text_line_left()],
             ),
             shape_item(6_000_000, 1_000_000, 3_000_000, 3_000_000),
@@ -1816,20 +1909,26 @@ mod tests {
         };
 
         let scene = make_scene(vec![
+            text_item_with_lines(1_000_000, 500_000, 4_000_000, 1_000_000, vec![line_arial]),
             text_item_with_lines(
-                1_000_000, 500_000, 4_000_000, 1_000_000,
-                vec![line_arial],
-            ),
-            text_item_with_lines(
-                1_000_000, 2_000_000, 4_000_000, 1_000_000,
+                1_000_000,
+                2_000_000,
+                4_000_000,
+                1_000_000,
                 vec![line_georgia],
             ),
             text_item_with_lines(
-                1_000_000, 3_500_000, 4_000_000, 1_000_000,
+                1_000_000,
+                3_500_000,
+                4_000_000,
+                1_000_000,
                 vec![line_roboto],
             ),
             text_item_with_lines(
-                1_000_000, 5_000_000, 4_000_000, 1_000_000,
+                1_000_000,
+                5_000_000,
+                4_000_000,
+                1_000_000,
                 vec![line_courier],
             ),
             shape_item(8_000_000, 1_000_000, 2_000_000, 4_000_000),
@@ -1865,14 +1964,8 @@ mod tests {
         };
 
         let scene = make_scene(vec![
-            text_item_with_lines(
-                1_000_000, 1_000_000, 4_000_000, 1_500_000,
-                vec![title_line],
-            ),
-            text_item_with_lines(
-                1_000_000, 3_000_000, 4_000_000, 2_000_000,
-                vec![body_line],
-            ),
+            text_item_with_lines(1_000_000, 1_000_000, 4_000_000, 1_500_000, vec![title_line]),
+            text_item_with_lines(1_000_000, 3_000_000, 4_000_000, 2_000_000, vec![body_line]),
             shape_item(6_000_000, 1_000_000, 3_000_000, 3_000_000),
         ]);
 
@@ -1909,14 +2002,8 @@ mod tests {
         };
 
         let scene = make_scene(vec![
-            text_item_with_lines(
-                1_000_000, 1_000_000, 8_000_000, 2_000_000,
-                vec![title_line],
-            ),
-            text_item_with_lines(
-                1_000_000, 3_500_000, 8_000_000, 2_000_000,
-                vec![body_line],
-            ),
+            text_item_with_lines(1_000_000, 1_000_000, 8_000_000, 2_000_000, vec![title_line]),
+            text_item_with_lines(1_000_000, 3_500_000, 8_000_000, 2_000_000, vec![body_line]),
             shape_item(1_000_000, 6_000_000, 8_000_000, 500_000),
         ]);
 

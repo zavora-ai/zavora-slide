@@ -6,14 +6,12 @@ pub mod text_shaper;
 pub mod theme_resolver;
 
 pub use theme_resolver::{
-    apply_lum_mod, apply_lum_off, apply_modifiers, apply_shade, apply_tint,
-    ColorMap, ColorModifier, ThemeColorScheme, ThemeFontScheme,
+    ColorMap, ColorModifier, ThemeColorScheme, ThemeFontScheme, apply_lum_mod, apply_lum_off,
+    apply_modifiers, apply_shade, apply_tint,
 };
 
 use base64::Engine;
-use zavora_slide_layout::{
-    Background, Color, GradientFill, Item, Outline, Scene, ShapeFill,
-};
+use zavora_slide_layout::{Background, Color, GradientFill, Item, Outline, Scene, ShapeFill};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RenderError {
@@ -24,7 +22,10 @@ pub enum RenderError {
 }
 
 fn esc(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn rgb(c: Color) -> String {
@@ -57,8 +58,26 @@ fn wrap(text: &str, font_px: f64, max_px: f64) -> Vec<String> {
     lines
 }
 
+/// How to render.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SvgOptions {
+    /// Wrap each scene item in `<g data-item="{index}">` so a client can tell what was
+    /// clicked and which element a change refers to.
+    ///
+    /// Off by default, so existing output is byte-for-byte unchanged. This mirrors
+    /// `zavora-docx-html`'s `HtmlOptions { editable }`, which emits `data-p` for the
+    /// same reason: a rendered document is not editable unless each part of it can be
+    /// named.
+    pub identify: bool,
+}
+
 /// Render a scene to an SVG document string at the given pixel width.
 pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
+    scene_to_svg_with(scene, target_px_w, SvgOptions::default())
+}
+
+/// Render a scene, choosing whether each item is identifiable.
+pub fn scene_to_svg_with(scene: &Scene, target_px_w: u32, options: SvgOptions) -> String {
     let shaper = text_shaper::TextShaper::new();
     let h = scene.px_height(target_px_w);
     let sw = scene.width_emu;
@@ -80,7 +99,11 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
             ));
         }
         Some(Background::Picture(data)) => {
-            let mime = if data.starts_with(&[0xFF, 0xD8]) { "jpeg" } else { "png" };
+            let mime = if data.starts_with(&[0xFF, 0xD8]) {
+                "jpeg"
+            } else {
+                "png"
+            };
             let b64 = base64::engine::general_purpose::STANDARD.encode(data);
             s.push_str(&format!(
                 "<image x=\"0\" y=\"0\" width=\"{target_px_w}\" height=\"{h}\" \
@@ -99,9 +122,37 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
     let scale = target_px_w as f64 / sw as f64;
     // 1 point = 12700 EMU, and `scale` is pixels-per-EMU.
     let px_per_pt = zavora_slide_layout::EMU_PER_POINT * scale;
-    for item in &scene.items {
+    for (item_index, item) in scene.items.iter().enumerate() {
+        if options.identify {
+            // The item index says which drawn element this is; the source says what it
+            // belongs to. A caller needs the second to change anything, because one shape
+            // can be drawn as several items.
+            let attribution = match scene.source_of(item_index) {
+                Some(zavora_slide_layout::ItemSource::Shape(i)) => {
+                    format!(" data-shape=\"{i}\"")
+                }
+                Some(zavora_slide_layout::ItemSource::Image(i)) => {
+                    format!(" data-image=\"{i}\"")
+                }
+                Some(zavora_slide_layout::ItemSource::Table(i)) => {
+                    format!(" data-table=\"{i}\"")
+                }
+                Some(zavora_slide_layout::ItemSource::Chart(i)) => {
+                    format!(" data-chart=\"{i}\"")
+                }
+                Some(zavora_slide_layout::ItemSource::Background) => {
+                    " data-background=\"true\"".to_string()
+                }
+                None => String::new(),
+            };
+            s.push_str(&format!("<g data-item=\"{item_index}\"{attribution}>"));
+        }
         match item {
-            Item::Rect { rect, fill, outline } => {
+            Item::Rect {
+                rect,
+                fill,
+                outline,
+            } => {
                 let (x, y, w, hh) = rect.to_px(sw, target_px_w);
                 let fill_attr = fill.map(rgb).unwrap_or_else(|| "none".into());
                 let (stroke, sw_attr) = match outline {
@@ -113,7 +164,13 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
                      fill=\"{fill_attr}\" stroke=\"{stroke}\" stroke-width=\"{sw_attr:.2}\"/>"
                 ));
             }
-            Item::Shape { rect, preset, fill, outline, rotation_deg } => {
+            Item::Shape {
+                rect,
+                preset,
+                fill,
+                outline,
+                rotation_deg,
+            } => {
                 let (x, y, w, hh) = rect.to_px(sw, target_px_w);
                 let xf = x as f64;
                 let yf = y as f64;
@@ -169,19 +226,25 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
             Item::Text { rect, lines, props } => {
                 let (x, y, w, h) = rect.to_px(sw, target_px_w);
                 let shaped = shaper.shape_text_frame(
-                    lines,
-                    props,
-                    x as f64,
-                    y as f64,
-                    w as f64,
-                    h as f64,
-                    px_per_pt,
+                    lines, props, x as f64, y as f64, w as f64, h as f64, px_per_pt,
                 );
                 for sl in &shaped {
                     let weight = if sl.bold { " font-weight=\"bold\"" } else { "" };
-                    let style = if sl.italic { " font-style=\"italic\"" } else { "" };
-                    let decoration = if sl.underline { " text-decoration=\"underline\"" } else { "" };
-                    let family = if sl.font_family.is_empty() { "sans-serif" } else { &sl.font_family };
+                    let style = if sl.italic {
+                        " font-style=\"italic\""
+                    } else {
+                        ""
+                    };
+                    let decoration = if sl.underline {
+                        " text-decoration=\"underline\""
+                    } else {
+                        ""
+                    };
+                    let family = if sl.font_family.is_empty() {
+                        "sans-serif"
+                    } else {
+                        &sl.font_family
+                    };
                     s.push_str(&format!(
                         "<text x=\"{x:.1}\" y=\"{y:.1}\" font-family=\"{fam}\" \
                          font-size=\"{sz:.1}\" fill=\"{col}\"{weight}{style}{decoration}>{t}</text>",
@@ -194,9 +257,18 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
                     ));
                 }
             }
-            Item::Image { rect, data, crop, rotation_deg } => {
+            Item::Image {
+                rect,
+                data,
+                crop,
+                rotation_deg,
+            } => {
                 let (x, y, w, hh) = rect.to_px(sw, target_px_w);
-                let mime = if data.starts_with(&[0xFF, 0xD8]) { "jpeg" } else { "png" };
+                let mime = if data.starts_with(&[0xFF, 0xD8]) {
+                    "jpeg"
+                } else {
+                    "png"
+                };
                 let b64 = base64::engine::general_purpose::STANDARD.encode(data);
 
                 let has_crop = crop.as_ref().is_some_and(|c| c.is_cropped());
@@ -262,6 +334,9 @@ pub fn scene_to_svg(scene: &Scene, target_px_w: u32) -> String {
                 }
             }
         }
+        if options.identify {
+            s.push_str("</g>");
+        }
     }
 
     // Insert defs block if we have any
@@ -313,7 +388,11 @@ fn emit_gradient_def(id: &str, grad: &GradientFill) -> String {
 
 /// Emit an SVG pattern definition for a picture fill.
 fn emit_pattern_def(id: &str, data: &[u8], w: f64, h: f64) -> String {
-    let mime = if data.starts_with(&[0xFF, 0xD8]) { "jpeg" } else { "png" };
+    let mime = if data.starts_with(&[0xFF, 0xD8]) {
+        "jpeg"
+    } else {
+        "png"
+    };
     let b64 = base64::engine::general_purpose::STANDARD.encode(data);
     format!(
         "<pattern id=\"{id}\" patternUnits=\"objectBoundingBox\" width=\"1\" height=\"1\">\
@@ -342,10 +421,16 @@ fn outline_attrs(outline: &Option<Outline>, px_per_pt: f64) -> (String, f64, Str
 pub fn scene_to_png(scene: &Scene, target_px_w: u32) -> Result<Vec<u8>, RenderError> {
     let svg = scene_to_svg(scene, target_px_w);
     let opt = build_options();
-    let tree = resvg::usvg::Tree::from_str(&svg, &opt).map_err(|e| RenderError::Svg(e.to_string()))?;
+    let tree =
+        resvg::usvg::Tree::from_str(&svg, &opt).map_err(|e| RenderError::Svg(e.to_string()))?;
     let size = tree.size().to_int_size();
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(size.width(), size.height()).ok_or(RenderError::Raster)?;
-    resvg::render(&tree, resvg::tiny_skia::Transform::identity(), &mut pixmap.as_mut());
+    let mut pixmap =
+        resvg::tiny_skia::Pixmap::new(size.width(), size.height()).ok_or(RenderError::Raster)?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::identity(),
+        &mut pixmap.as_mut(),
+    );
     pixmap.encode_png().map_err(|_| RenderError::Raster)
 }
 
@@ -372,21 +457,48 @@ fn build_options() -> resvg::usvg::Options<'static> {
 mod tests {
     use super::*;
     use zavora_slide_layout::{
-        DashStyle, GradientFill, GradientStop, ImageCrop, Item, Outline, PictureFill, Rect,
-        Scene, ShapeFill, TextFrameProps, TextLine, Background,
+        Background, DashStyle, GradientFill, GradientStop, ImageCrop, Item, Outline, PictureFill,
+        Rect, Scene, ShapeFill, TextFrameProps, TextLine,
     };
 
     fn sample() -> Scene {
         let mut s = Scene::new(12192000, 6858000);
-        s.background = Some(Color { r: 245, g: 245, b: 245 });
+        s.background = Some(Color {
+            r: 245,
+            g: 245,
+            b: 245,
+        });
         s.items.push(Item::Rect {
-            rect: Rect { x: 914400, y: 914400, w: 1828800, h: 914400 },
-            fill: Some(Color { r: 68, g: 114, b: 196 }),
+            rect: Rect {
+                x: 914400,
+                y: 914400,
+                w: 1828800,
+                h: 914400,
+            },
+            fill: Some(Color {
+                r: 68,
+                g: 114,
+                b: 196,
+            }),
             outline: None,
         });
         s.items.push(Item::Text {
-            rect: Rect { x: 914400, y: 457200, w: 9000000, h: 914400 },
-            lines: vec![TextLine { text: "Title <&>".into(), size_pt: 32.0, color: Color::BLACK, bold: true, italic: false, level: 0, is_paragraph_start: true, ..TextLine::default() }],
+            rect: Rect {
+                x: 914400,
+                y: 457200,
+                w: 9000000,
+                h: 914400,
+            },
+            lines: vec![TextLine {
+                text: "Title <&>".into(),
+                size_pt: 32.0,
+                color: Color::BLACK,
+                bold: true,
+                italic: false,
+                level: 0,
+                is_paragraph_start: true,
+                ..TextLine::default()
+            }],
             props: TextFrameProps::default(),
         });
         s
@@ -439,7 +551,10 @@ mod tests {
             families: &[resvg::usvg::fontdb::Family::Name("Liberation Sans")],
             ..Default::default()
         };
-        assert!(opt.fontdb_mut().query(&q).is_some(), "bundled Liberation Sans should be queryable");
+        assert!(
+            opt.fontdb_mut().query(&q).is_some(),
+            "bundled Liberation Sans should be queryable"
+        );
     }
 
     // --- Task 3.4: Shape/fill/image fidelity tests ---
@@ -448,7 +563,12 @@ mod tests {
     fn shape_with_preset_geometry_emits_path() {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Shape {
-            rect: Rect { x: 914400, y: 914400, w: 1828800, h: 914400 },
+            rect: Rect {
+                x: 914400,
+                y: 914400,
+                w: 1828800,
+                h: 914400,
+            },
             preset: Some("ellipse".into()),
             fill: ShapeFill::Solid(Color { r: 255, g: 0, b: 0 }),
             outline: None,
@@ -464,7 +584,12 @@ mod tests {
     fn shape_unknown_preset_falls_back_to_bbox() {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Shape {
-            rect: Rect { x: 0, y: 0, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 4572000,
+                h: 2286000,
+            },
             preset: Some("veryRareUnknownPreset".into()),
             fill: ShapeFill::Solid(Color { r: 0, g: 128, b: 0 }),
             outline: None,
@@ -480,19 +605,33 @@ mod tests {
         let path_data = &svg[path_start..path_end];
         assert!(path_data.contains('M'));
         assert!(path_data.contains('L'));
-        assert!(!path_data.contains('C'), "bbox fallback should not have curves");
+        assert!(
+            !path_data.contains('C'),
+            "bbox fallback should not have curves"
+        );
     }
 
     #[test]
     fn gradient_fill_emits_linear_gradient_def() {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Shape {
-            rect: Rect { x: 0, y: 0, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 4572000,
+                h: 2286000,
+            },
             preset: Some("rect".into()),
             fill: ShapeFill::Gradient(GradientFill {
                 stops: vec![
-                    GradientStop { position: 0.0, color: Color { r: 255, g: 0, b: 0 } },
-                    GradientStop { position: 1.0, color: Color { r: 0, g: 0, b: 255 } },
+                    GradientStop {
+                        position: 0.0,
+                        color: Color { r: 255, g: 0, b: 0 },
+                    },
+                    GradientStop {
+                        position: 1.0,
+                        color: Color { r: 0, g: 0, b: 255 },
+                    },
                 ],
                 angle_deg: 90.0,
                 is_radial: false,
@@ -502,22 +641,43 @@ mod tests {
         });
         let svg = scene_to_svg(&s, 1280);
         assert!(svg.contains("<defs>"), "should have a defs section");
-        assert!(svg.contains("<linearGradient"), "should emit linearGradient");
+        assert!(
+            svg.contains("<linearGradient"),
+            "should emit linearGradient"
+        );
         assert!(svg.contains("stop-color=\"#FF0000\""));
         assert!(svg.contains("stop-color=\"#0000FF\""));
-        assert!(svg.contains("url(#grad0)"), "fill should reference the gradient");
+        assert!(
+            svg.contains("url(#grad0)"),
+            "fill should reference the gradient"
+        );
     }
 
     #[test]
     fn gradient_fill_radial_emits_radial_gradient_def() {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Shape {
-            rect: Rect { x: 0, y: 0, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 4572000,
+                h: 2286000,
+            },
             preset: Some("ellipse".into()),
             fill: ShapeFill::Gradient(GradientFill {
                 stops: vec![
-                    GradientStop { position: 0.0, color: Color { r: 255, g: 255, b: 0 } },
-                    GradientStop { position: 1.0, color: Color { r: 0, g: 128, b: 0 } },
+                    GradientStop {
+                        position: 0.0,
+                        color: Color {
+                            r: 255,
+                            g: 255,
+                            b: 0,
+                        },
+                    },
+                    GradientStop {
+                        position: 1.0,
+                        color: Color { r: 0, g: 128, b: 0 },
+                    },
                 ],
                 angle_deg: 0.0,
                 is_radial: true,
@@ -526,7 +686,10 @@ mod tests {
             rotation_deg: 0.0,
         });
         let svg = scene_to_svg(&s, 1280);
-        assert!(svg.contains("<radialGradient"), "should emit radialGradient");
+        assert!(
+            svg.contains("<radialGradient"),
+            "should emit radialGradient"
+        );
     }
 
     #[test]
@@ -538,7 +701,12 @@ mod tests {
             0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
         ];
         s.items.push(Item::Shape {
-            rect: Rect { x: 0, y: 0, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 4572000,
+                h: 2286000,
+            },
             preset: Some("rect".into()),
             fill: ShapeFill::Picture(PictureFill { data: png_data }),
             outline: None,
@@ -546,7 +714,10 @@ mod tests {
         });
         let svg = scene_to_svg(&s, 1280);
         assert!(svg.contains("<pattern"), "should emit a pattern element");
-        assert!(svg.contains("url(#pat0)"), "fill should reference the pattern");
+        assert!(
+            svg.contains("url(#pat0)"),
+            "fill should reference the pattern"
+        );
         assert!(svg.contains("data:image/png;base64,"));
     }
 
@@ -554,7 +725,12 @@ mod tests {
     fn outline_dash_emits_stroke_dasharray() {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Shape {
-            rect: Rect { x: 0, y: 0, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 4572000,
+                h: 2286000,
+            },
             preset: Some("rect".into()),
             fill: ShapeFill::None,
             outline: Some(Outline {
@@ -565,7 +741,10 @@ mod tests {
             rotation_deg: 0.0,
         });
         let svg = scene_to_svg(&s, 1280);
-        assert!(svg.contains("stroke-dasharray=\"4 3 1 3\""), "DashDot should produce '4 3 1 3'");
+        assert!(
+            svg.contains("stroke-dasharray=\"4 3 1 3\""),
+            "DashDot should produce '4 3 1 3'"
+        );
         assert!(svg.contains("stroke=\"#000000\""));
     }
 
@@ -573,9 +752,18 @@ mod tests {
     fn outline_solid_no_dasharray() {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Shape {
-            rect: Rect { x: 0, y: 0, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 4572000,
+                h: 2286000,
+            },
             preset: Some("rect".into()),
-            fill: ShapeFill::Solid(Color { r: 200, g: 200, b: 200 }),
+            fill: ShapeFill::Solid(Color {
+                r: 200,
+                g: 200,
+                b: 200,
+            }),
             outline: Some(Outline {
                 color: Color { r: 0, g: 0, b: 0 },
                 width_pt: 1.0,
@@ -584,7 +772,10 @@ mod tests {
             rotation_deg: 0.0,
         });
         let svg = scene_to_svg(&s, 1280);
-        assert!(!svg.contains("stroke-dasharray"), "solid outline should not have dasharray");
+        assert!(
+            !svg.contains("stroke-dasharray"),
+            "solid outline should not have dasharray"
+        );
     }
 
     #[test]
@@ -604,7 +795,11 @@ mod tests {
             (DashStyle::SysDashDotDot, Some("3 1 1 1 1 1")),
         ];
         for (style, expected) in &styles {
-            assert_eq!(style.to_svg_dasharray(), *expected, "mismatch for {style:?}");
+            assert_eq!(
+                style.to_svg_dasharray(),
+                *expected,
+                "mismatch for {style:?}"
+            );
         }
     }
 
@@ -614,13 +809,26 @@ mod tests {
         // Minimal JPEG header
         let jpeg_data = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
         s.items.push(Item::Image {
-            rect: Rect { x: 914400, y: 914400, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 914400,
+                y: 914400,
+                w: 4572000,
+                h: 2286000,
+            },
             data: jpeg_data,
-            crop: Some(ImageCrop { left: 0.1, top: 0.2, right: 0.1, bottom: 0.2 }),
+            crop: Some(ImageCrop {
+                left: 0.1,
+                top: 0.2,
+                right: 0.1,
+                bottom: 0.2,
+            }),
             rotation_deg: 0.0,
         });
         let svg = scene_to_svg(&s, 1280);
-        assert!(svg.contains("<clipPath"), "cropped image should have a clipPath");
+        assert!(
+            svg.contains("<clipPath"),
+            "cropped image should have a clipPath"
+        );
         assert!(svg.contains("clip-path=\"url(#clip0)\""));
         assert!(svg.contains("data:image/jpeg;base64,"));
     }
@@ -630,13 +838,21 @@ mod tests {
         let mut s = Scene::new(12192000, 6858000);
         let jpeg_data = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
         s.items.push(Item::Image {
-            rect: Rect { x: 914400, y: 914400, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 914400,
+                y: 914400,
+                w: 4572000,
+                h: 2286000,
+            },
             data: jpeg_data,
             crop: None,
             rotation_deg: 45.0,
         });
         let svg = scene_to_svg(&s, 1280);
-        assert!(svg.contains("transform=\"rotate(45.0"), "rotated image should have rotate transform");
+        assert!(
+            svg.contains("transform=\"rotate(45.0"),
+            "rotated image should have rotate transform"
+        );
     }
 
     #[test]
@@ -644,23 +860,41 @@ mod tests {
         let mut s = Scene::new(12192000, 6858000);
         let jpeg_data = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
         s.items.push(Item::Image {
-            rect: Rect { x: 914400, y: 914400, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 914400,
+                y: 914400,
+                w: 4572000,
+                h: 2286000,
+            },
             data: jpeg_data,
             crop: None,
             rotation_deg: 0.0,
         });
         let svg = scene_to_svg(&s, 1280);
-        assert!(!svg.contains("<clipPath"), "uncropped image should not have clipPath");
-        assert!(!svg.contains("transform="), "unrotated image should not have transform");
+        assert!(
+            !svg.contains("<clipPath"),
+            "uncropped image should not have clipPath"
+        );
+        assert!(
+            !svg.contains("transform="),
+            "unrotated image should not have transform"
+        );
         assert!(svg.contains("<image"));
     }
 
     #[test]
     fn solid_background_renders() {
         let mut s = Scene::new(12192000, 6858000);
-        s.rich_background = Some(Background::Solid(Color { r: 30, g: 60, b: 90 }));
+        s.rich_background = Some(Background::Solid(Color {
+            r: 30,
+            g: 60,
+            b: 90,
+        }));
         let svg = scene_to_svg(&s, 1280);
-        assert!(svg.contains("fill=\"#1E3C5A\""), "solid background should use the specified color");
+        assert!(
+            svg.contains("fill=\"#1E3C5A\""),
+            "solid background should use the specified color"
+        );
     }
 
     #[test]
@@ -669,7 +903,10 @@ mod tests {
         let png_data = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
         s.rich_background = Some(Background::Picture(png_data));
         let svg = scene_to_svg(&s, 1280);
-        assert!(svg.contains("<image"), "picture background should emit an image element");
+        assert!(
+            svg.contains("<image"),
+            "picture background should emit an image element"
+        );
         assert!(svg.contains("preserveAspectRatio=\"xMidYMid slice\""));
         assert!(svg.contains("data:image/png;base64,"));
     }
@@ -678,28 +915,126 @@ mod tests {
     fn shape_rotation_emits_transform() {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Shape {
-            rect: Rect { x: 914400, y: 914400, w: 1828800, h: 914400 },
+            rect: Rect {
+                x: 914400,
+                y: 914400,
+                w: 1828800,
+                h: 914400,
+            },
             preset: Some("diamond".into()),
-            fill: ShapeFill::Solid(Color { r: 128, g: 0, b: 128 }),
+            fill: ShapeFill::Solid(Color {
+                r: 128,
+                g: 0,
+                b: 128,
+            }),
             outline: None,
             rotation_deg: 30.0,
         });
         let svg = scene_to_svg(&s, 1280);
-        assert!(svg.contains("transform=\"rotate(30.0"), "rotated shape should have rotate transform");
+        assert!(
+            svg.contains("transform=\"rotate(30.0"),
+            "rotated shape should have rotate transform"
+        );
     }
 
     #[test]
     fn shape_no_preset_renders_as_rect_path() {
         let mut s = Scene::new(12192000, 6858000);
         s.items.push(Item::Shape {
-            rect: Rect { x: 0, y: 0, w: 4572000, h: 2286000 },
+            rect: Rect {
+                x: 0,
+                y: 0,
+                w: 4572000,
+                h: 2286000,
+            },
             preset: None,
-            fill: ShapeFill::Solid(Color { r: 100, g: 100, b: 100 }),
+            fill: ShapeFill::Solid(Color {
+                r: 100,
+                g: 100,
+                b: 100,
+            }),
             outline: None,
             rotation_deg: 0.0,
         });
         let svg = scene_to_svg(&s, 1280);
-        assert!(svg.contains("<path"), "shape without preset should still emit a path");
+        assert!(
+            svg.contains("<path"),
+            "shape without preset should still emit a path"
+        );
         assert!(svg.contains("fill=\"#646464\""));
+    }
+
+    /// Identifiers are what make a rendered slide editable: without them a click on a
+    /// shape cannot be traced back to anything.
+    #[test]
+    fn identified_output_names_every_item() {
+        let scene = sample();
+        let svg = scene_to_svg_with(&scene, 1280, SvgOptions { identify: true });
+        for index in 0..scene.items.len() {
+            assert!(
+                svg.contains(&format!("data-item=\"{index}\"")),
+                "item {index} is not addressable in the rendered slide"
+            );
+        }
+        assert_eq!(
+            svg.matches("<g data-item=").count(),
+            scene.items.len(),
+            "every item, and nothing else, should be wrapped"
+        );
+        assert_eq!(
+            svg.matches("</g>").count(),
+            scene.items.len(),
+            "every wrapper must be closed, or the SVG is malformed"
+        );
+    }
+
+    /// The default must be untouched, so nothing that renders slides today changes.
+    #[test]
+    fn default_output_is_unchanged_by_the_option() {
+        let scene = sample();
+        let plain = scene_to_svg(&scene, 1280);
+        let also_plain = scene_to_svg_with(&scene, 1280, SvgOptions::default());
+        assert_eq!(plain, also_plain);
+        assert!(!plain.contains("data-item"), "identifiers must be opt-in");
+    }
+
+    #[test]
+    fn identifying_adds_nothing_but_the_wrapper() {
+        let scene = sample();
+        let plain = scene_to_svg(&scene, 1280);
+        let identified = scene_to_svg_with(&scene, 1280, SvgOptions { identify: true });
+        let stripped = identified
+            .replace("</g>", "")
+            .split("<g data-item=")
+            .enumerate()
+            .map(|(i, part)| {
+                if i == 0 {
+                    part.to_string()
+                } else {
+                    part[part.find('>').unwrap() + 1..].to_string()
+                }
+            })
+            .collect::<String>();
+        assert_eq!(
+            stripped, plain,
+            "the drawing itself must be identical whether or not it is identified"
+        );
+    }
+
+    /// Guards the two tests above from proving nothing: if `sample()` were empty, an
+    /// assertion that `data-item` is absent would hold trivially.
+    #[test]
+    fn the_sample_used_by_those_tests_actually_draws_something() {
+        let scene = sample();
+        assert!(
+            scene.items.len() >= 2,
+            "the sample must have several elements or the identifier tests are vacuous, got {}",
+            scene.items.len()
+        );
+        let identified = scene_to_svg_with(&scene, 1280, SvgOptions { identify: true });
+        assert!(
+            identified.contains("data-item"),
+            "the opt-in must actually do something"
+        );
     }
 }
