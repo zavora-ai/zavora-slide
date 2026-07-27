@@ -225,3 +225,55 @@ fn a_chart_with_no_numbers_draws_nothing() {
     // No chart added: the slide is blank, and stays blank.
     assert_eq!(before, deck.slide(at).unwrap().scene().items.len());
 }
+
+/// A placeholder is put where the layout says, not where a title usually goes.
+///
+/// A placeholder on a slide states no box of its own — PowerPoint reads it from the layout, and so
+/// does anything that renders the file correctly. Guessing puts a title where a title usually goes,
+/// which is right often enough to look plausible and wrong often enough to matter: the guess put a
+/// bulleted body in a half-width column on a layout that gives it the full width.
+#[test]
+fn a_placeholder_sits_where_the_layout_puts_it() {
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let deck = Presentation::open(corpus.join("powerpoint_sample.pptx")).unwrap();
+    let scene = deck.slide(0).unwrap().scene();
+
+    // The centred title on this deck's first layout, stated in the layout part itself as
+    // (685800, 2130425) 7772400 by 1470025. Read from the file, so the numbers are the file's.
+    let title = scene
+        .items
+        .iter()
+        .find_map(|item| match item {
+            zavora_slide_layout::Item::Text { rect, lines, .. }
+                if lines.iter().any(|line| line.text.contains("Corpus Sample")) =>
+            {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .expect("the title is not drawn at all");
+
+    assert_eq!(
+        (title.x, title.y, title.w, title.h),
+        (685_800, 2_130_425, 7_772_400, 1_470_025),
+        "the title is not where the layout puts it, so it was guessed"
+    );
+}
+
+/// The layout part really does state that box, so the test above is comparing against the file.
+#[test]
+fn the_layout_under_test_states_that_box() {
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let bytes = std::fs::read(corpus.join("powerpoint_sample.pptx")).unwrap();
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut xml = String::new();
+    std::io::Read::read_to_string(
+        &mut zip.by_name("ppt/slideLayouts/slideLayout1.xml").unwrap(),
+        &mut xml,
+    )
+    .unwrap();
+    assert!(
+        xml.contains("685800") && xml.contains("2130425"),
+        "the layout does not state the box the other test asserts"
+    );
+}

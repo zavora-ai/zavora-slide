@@ -135,6 +135,35 @@ impl Presentation {
                         }
                     }
 
+                    // Where the layout puts each placeholder, and where the master puts the ones the
+                    // layout leaves alone. Read now, while the package is open: a placeholder on a
+                    // slide states no box of its own, and the file says where it goes.
+                    if let Some(slide_rels) = pkg.get_part_rels(part_path)
+                        && let Some(layout_rel) = slide_rels.get_by_type(rel_types::SLIDE_LAYOUT)
+                    {
+                        let layout_path = normalize_part_path(&OpcPackage::resolve_rel_target(
+                            part_path,
+                            &layout_rel.target,
+                        ));
+
+                        // The master first, so anything the layout states of its own wins.
+                        if let Some(layout_rels) = pkg.get_part_rels(&layout_path)
+                            && let Some(master_rel) =
+                                layout_rels.get_by_type(rel_types::SLIDE_MASTER)
+                        {
+                            let master_path = normalize_part_path(&OpcPackage::resolve_rel_target(
+                                &layout_path,
+                                &master_rel.target,
+                            ));
+                            if let Some(bytes) = pkg.get_part(&master_path) {
+                                data.layout_boxes.extend(placeholder_boxes(bytes));
+                            }
+                        }
+                        if let Some(bytes) = pkg.get_part(&layout_path) {
+                            data.layout_boxes.extend(placeholder_boxes(bytes));
+                        }
+                    }
+
                     // The charts this slide points at, kept the same way and for the same reason: a
                     // slide whose content is a chart drew an empty frame. The chart's own XML is
                     // what says where the bars go, so it is taken now while the package is open.
@@ -1130,5 +1159,80 @@ mod tests {
         assert!(pkg.get_part("/ppt/slideLayouts/slideLayout1.xml").is_some());
         assert!(pkg.get_part("/ppt/theme/theme1.xml").is_some());
         assert!(pkg.get_part("/ppt/slides/slide1.xml").is_some());
+    }
+}
+
+/// Every placeholder a layout or master states a box for, keyed the way a slide refers to it.
+///
+/// The key is the placeholder's type and, where it has one, its index — "body/1" and "body/2" are
+/// two different boxes on a comparison layout and putting both in the same place would draw one over
+/// the other.
+fn placeholder_boxes(xml: &[u8]) -> std::collections::HashMap<String, (i64, i64, i64, i64)> {
+    let mut boxes = std::collections::HashMap::new();
+    let Ok(dom) = zavora_slide_oxml::Document::parse(xml) else {
+        return boxes;
+    };
+    let Some(root) = dom.root() else {
+        return boxes;
+    };
+
+    let mut shapes = Vec::new();
+    collect_named(root, b"sp", &mut shapes);
+    for shape in shapes {
+        let Some(ph) = shape.find_descendant(b"ph") else {
+            continue;
+        };
+        let kind = ph
+            .attr(b"type")
+            .and_then(|value| std::str::from_utf8(value).ok())
+            .unwrap_or("body")
+            .to_string();
+        let index = ph
+            .attr(b"idx")
+            .and_then(|value| std::str::from_utf8(value).ok())
+            .map(str::to_string);
+
+        let Some(xfrm) = shape.find_descendant(b"xfrm") else {
+            continue;
+        };
+        let number = |value: Option<&[u8]>| -> Option<i64> {
+            std::str::from_utf8(value?).ok()?.trim().parse::<i64>().ok()
+        };
+        let (Some(off), Some(ext)) = (
+            xfrm.children_named(b"off").next(),
+            xfrm.children_named(b"ext").next(),
+        ) else {
+            continue;
+        };
+        let (Some(x), Some(y), Some(w), Some(h)) = (
+            number(off.attr(b"x")),
+            number(off.attr(b"y")),
+            number(ext.attr(b"cx")),
+            number(ext.attr(b"cy")),
+        ) else {
+            continue;
+        };
+
+        // Under both keys: a slide may name the placeholder by type, by index, or by both.
+        boxes.insert(kind.clone(), (x, y, w, h));
+        if let Some(index) = index {
+            boxes.insert(format!("{kind}/{index}"), (x, y, w, h));
+            boxes.entry(format!("/{index}")).or_insert((x, y, w, h));
+        }
+    }
+    boxes
+}
+
+/// Every element under this one with the given name.
+fn collect_named<'a>(
+    element: &'a zavora_slide_oxml::Element,
+    local: &[u8],
+    found: &mut Vec<&'a zavora_slide_oxml::Element>,
+) {
+    for child in element.child_elements() {
+        if child.local_name() == local {
+            found.push(child);
+        }
+        collect_named(child, local, found);
     }
 }

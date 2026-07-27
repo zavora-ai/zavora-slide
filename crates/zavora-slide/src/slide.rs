@@ -303,6 +303,14 @@ pub struct SlideData {
     /// Kept at open, because drawing the slide needs the bytes and the package is not held past
     /// then. Without it a slide whose content is a picture drew as nothing at all.
     pub(crate) media: std::collections::HashMap<String, Vec<u8>>,
+    /// Where the layout puts each placeholder: "title", "body/1" and so on, to the box the layout
+    /// gives it.
+    ///
+    /// A placeholder on a slide usually states no geometry of its own — PowerPoint reads it from the
+    /// layout, and so does every other tool that renders the file correctly. Guessing instead puts
+    /// a title where a title usually goes, which is right often enough to look plausible and wrong
+    /// often enough to matter. Taken when the package is open, because it is not kept.
+    pub(crate) layout_boxes: std::collections::HashMap<String, (i64, i64, i64, i64)>,
     /// Editable DOM of the notes-slide part when opened from an existing deck.
     /// Notes edits mutate this tree in place; save serializes only the notes part
     /// (surgical, no full rebuild). `None` when the slide has no notes part.
@@ -341,6 +349,7 @@ impl SlideData {
             shapes: Vec::new(),
             images: Vec::new(),
             media: std::collections::HashMap::new(),
+            layout_boxes: std::collections::HashMap::new(),
             tables: Vec::new(),
             notes: None,
             background: None,
@@ -415,6 +424,11 @@ impl SlideData {
         .into_bytes()
     }
 
+    /// Where the layout puts each placeholder, for drawing.
+    fn layout_boxes_for_scene(&self) -> std::collections::HashMap<String, (i64, i64, i64, i64)> {
+        self.layout_boxes.clone()
+    }
+
     /// Build a render-ready [`Scene`] from this slide's content.
     /// The scene to draw.
     ///
@@ -425,9 +439,35 @@ impl SlideData {
     pub fn scene(&self, width_emu: i64, height_emu: i64) -> zavora_slide_layout::Scene {
         if let Some(dom) = self.dom.as_ref() {
             let media = &self.media;
-            let scene = crate::from_dom::scene_from_dom(dom, width_emu, height_emu, &|embed| {
-                media.get(embed).cloned()
-            });
+            let boxes = &self.layout_boxes_for_scene();
+            let scene = crate::from_dom::scene_from_dom(
+                dom,
+                width_emu,
+                height_emu,
+                &|embed| media.get(embed).cloned(),
+                &|kind, index| {
+                    // By type and index first, then by type alone, then by index alone: a slide can
+                    // name a placeholder any of those three ways and the layout may key it another.
+                    let keys = match index {
+                        Some(index) => vec![
+                            format!("{kind}/{index}"),
+                            kind.to_string(),
+                            format!("/{index}"),
+                        ],
+                        None => vec![kind.to_string()],
+                    };
+                    keys.iter().find_map(|key| {
+                        boxes
+                            .get(key)
+                            .map(|(x, y, w, h)| zavora_slide_layout::Rect {
+                                x: *x,
+                                y: *y,
+                                w: *w,
+                                h: *h,
+                            })
+                    })
+                },
+            );
             if !scene.items.is_empty() {
                 return scene;
             }

@@ -496,6 +496,7 @@ pub fn scene_from_dom(
     width: i64,
     height: i64,
     images: &dyn Fn(&str) -> Option<Vec<u8>>,
+    layout_box: &dyn Fn(&str, Option<u32>) -> Option<Rect>,
 ) -> Scene {
     let mut scene = Scene::new(width, height);
 
@@ -506,8 +507,13 @@ pub fn scene_from_dom(
         let source = Some(ItemSource::Shape(index));
 
         // Where it sits: what the slide says, or where the layout would put a placeholder.
+        // What the slide says, then what the layout says, and only then a guess. The order matters:
+        // a title the layout puts in the middle of the slide belongs in the middle of the slide, and
+        // the guess exists only for a file that states nothing anywhere.
         let rect = stated_rect(shape).or_else(|| {
-            placeholder_of(shape).map(|(kind, idx)| placeholder_rect(&kind, idx, width, height))
+            placeholder_of(shape).and_then(|(kind, idx)| {
+                layout_box(&kind, idx).or_else(|| Some(placeholder_rect(&kind, idx, width, height)))
+            })
         });
         let Some(rect) = rect else { continue };
 
