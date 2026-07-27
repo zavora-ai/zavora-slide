@@ -34,6 +34,8 @@ pub use theme::ThemeSpec;
 pub use units::{Emu, Layout, RenderFormat, ShapePreset, SlideSize};
 
 pub use qa::{design_lint, design_lint_with_config};
+mod from_dom;
+
 pub use zavora_slide_layout::{Color, Item, Scene, TextLine};
 pub use zavora_slide_oxml::Align;
 pub use zavora_slide_oxml::RunFormat;

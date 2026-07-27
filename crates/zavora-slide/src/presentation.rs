@@ -120,6 +120,21 @@ impl Presentation {
                         slide.sync_build_bullets_public(&bullets);
                     }
 
+                    // The pictures this slide points at, taken now because the package is not
+                    // kept: drawing the slide needs the bytes, and a slide whose content is a
+                    // picture drew as nothing without them.
+                    if let Some(slide_rels) = pkg.get_part_rels(part_path) {
+                        for rel in slide_rels.get_all_by_type(rel_types::IMAGE) {
+                            let media_path = normalize_part_path(&OpcPackage::resolve_rel_target(
+                                part_path,
+                                &rel.target,
+                            ));
+                            if let Some(bytes) = pkg.get_part(&media_path) {
+                                data.media.insert(rel.id.clone(), bytes.to_vec());
+                            }
+                        }
+                    }
+
                     // Parse the notes-slide part if the slide has one (via its rels).
                     if let Some(slide_rels) = pkg.get_part_rels(part_path)
                         && let Some(notes_rel) = slide_rels.get_by_type(rel_types::NOTES_SLIDE)

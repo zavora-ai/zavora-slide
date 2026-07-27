@@ -53,6 +53,15 @@ impl Element {
     }
 
     /// Direct child elements with the given local name.
+    /// Every child element, in document order. For a caller that has to take what is there rather
+    /// than ask for one name at a time — drawing a slide, where the order is the drawing order.
+    pub fn child_elements(&self) -> impl Iterator<Item = &Element> {
+        self.children.iter().filter_map(|node| match node {
+            Node::Element(element) => Some(element),
+            _ => None,
+        })
+    }
+
     pub fn children_named<'a>(&'a self, local: &'a [u8]) -> impl Iterator<Item = &'a Element> {
         self.children.iter().filter_map(move |n| match n {
             Node::Element(e) if e.local_name() == local => Some(e),

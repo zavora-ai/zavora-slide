@@ -298,6 +298,11 @@ pub struct SlideData {
     /// this tree in place; save serializes it byte-faithfully (untouched content
     /// preserved). `None` for slides authored from scratch.
     pub(crate) dom: Option<zavora_slide_oxml::SlideDom>,
+    /// The pictures this slide references, by the relationship id its shapes name.
+    ///
+    /// Kept at open, because drawing the slide needs the bytes and the package is not held past
+    /// then. Without it a slide whose content is a picture drew as nothing at all.
+    pub(crate) media: std::collections::HashMap<String, Vec<u8>>,
     /// Editable DOM of the notes-slide part when opened from an existing deck.
     /// Notes edits mutate this tree in place; save serializes only the notes part
     /// (surgical, no full rebuild). `None` when the slide has no notes part.
@@ -335,6 +340,7 @@ impl SlideData {
         Self {
             shapes: Vec::new(),
             images: Vec::new(),
+            media: std::collections::HashMap::new(),
             tables: Vec::new(),
             notes: None,
             background: None,
@@ -410,6 +416,25 @@ impl SlideData {
     }
 
     /// Build a render-ready [`Scene`] from this slide's content.
+    /// The scene to draw.
+    ///
+    /// From the slide's own shape tree where there is one — that is what the file says, shape by
+    /// shape, and it is how a picture or a second column reaches the screen. Only a slide built
+    /// here rather than opened falls back to the model, which is the one case where there is no XML
+    /// to read.
+    pub fn scene(&self, width_emu: i64, height_emu: i64) -> zavora_slide_layout::Scene {
+        if let Some(dom) = self.dom.as_ref() {
+            let media = &self.media;
+            let scene = crate::from_dom::scene_from_dom(dom, width_emu, height_emu, &|embed| {
+                media.get(embed).cloned()
+            });
+            if !scene.items.is_empty() {
+                return scene;
+            }
+        }
+        self.to_scene(width_emu, height_emu)
+    }
+
     pub fn to_scene(&self, width_emu: i64, height_emu: i64) -> zavora_slide_layout::Scene {
         use zavora_slide_layout::{Color, Item, Rect, Scene, TextFrameProps, TextLine};
 
@@ -1651,7 +1676,7 @@ impl Slide<'_> {
 
     /// Build a render-ready [`Scene`](zavora_slide_layout::Scene) of this slide.
     pub fn scene(&self) -> zavora_slide_layout::Scene {
-        self.data.to_scene(self.slide_cx, self.slide_cy)
+        self.data.scene(self.slide_cx, self.slide_cy)
     }
 }
 
@@ -1710,7 +1735,7 @@ impl SlideRef<'_> {
 
     /// Build a render-ready scene of this slide.
     pub fn scene(&self) -> zavora_slide_layout::Scene {
-        self.data.to_scene(self.slide_cx, self.slide_cy)
+        self.data.scene(self.slide_cx, self.slide_cy)
     }
 }
 

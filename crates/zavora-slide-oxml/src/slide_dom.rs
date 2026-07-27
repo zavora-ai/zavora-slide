@@ -327,6 +327,23 @@ impl SlideDom {
             .flat_map(|t| t.children_named(b"sp"))
     }
 
+    /// Everything on the slide, in the order it is drawn: autoshapes, pictures, tables, charts,
+    /// connectors and groups.
+    ///
+    /// `shapes` yields only `p:sp`, which is right for the editing calls that address a shape by
+    /// index and wrong for drawing: a slide whose content is a picture has no `p:sp` at all, so it
+    /// drew as nothing.
+    pub fn drawables(&self) -> impl Iterator<Item = &Element> {
+        self.sp_tree().into_iter().flat_map(|tree| {
+            tree.child_elements().filter(|child| {
+                matches!(
+                    child.local_name(),
+                    b"sp" | b"pic" | b"graphicFrame" | b"cxnSp" | b"grpSp"
+                )
+            })
+        })
+    }
+
     /// Plain text of every shape, one paragraph per line (read accessor).
     pub fn text(&self) -> String {
         let mut lines = Vec::new();
