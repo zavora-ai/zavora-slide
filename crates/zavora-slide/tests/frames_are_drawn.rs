@@ -351,3 +351,41 @@ fn a_named_colour_comes_from_the_theme() {
         "every drawn line came out black, so no colour was resolved at all"
     );
 }
+
+/// Titling a slide that has no title placeholder writes the title to the file.
+///
+/// This reported success and changed nothing. An opened deck is saved from its own XML, and the
+/// title was being written to a build model that save never looks at — so a slide added and then
+/// titled kept the name the interface had given it while the User was told the title was set.
+#[test]
+fn titling_a_slide_without_a_title_placeholder_reaches_the_file() {
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let mut deck = Presentation::open(corpus.join("deck_with_a_chart.pptx")).unwrap();
+
+    // A blank slide has no title placeholder, which is the case that failed.
+    let at = deck.add_slide(Layout::Blank);
+    deck.slide_mut(at).unwrap().set_title("Thank you").unwrap();
+    let bytes = deck.save_to_buffer().unwrap();
+
+    let reopened = Presentation::open_from_bytes(&bytes).unwrap();
+    let words: String = reopened
+        .slide(at)
+        .unwrap()
+        .scene()
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            zavora_slide_layout::Item::Text { lines, .. } => Some(
+                lines
+                    .iter()
+                    .map(|line| line.text.clone())
+                    .collect::<String>(),
+            ),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        words.contains("Thank you"),
+        "the title is not in the saved file: {words:?}"
+    );
+}

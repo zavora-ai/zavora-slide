@@ -819,13 +819,23 @@ impl Slide<'_> {
     /// Set the slide title (creates or replaces the title placeholder).
     pub fn set_title(&mut self, text: &str) -> Result<()> {
         // Opened slides: mutate the lossless DOM in place (surgical, preserves
-        // all other content). Falls through to the build model if the slide has
-        // no title placeholder in its DOM.
-        if let Some(dom) = self.data.dom.as_mut()
-            && dom.set_title(text).is_ok()
-        {
+        // all other content).
+        // Worked out before the DOM is borrowed, because it reads the slide's own size.
+        let (x, y, cx, cy) = self.title_box();
+        if let Some(dom) = self.data.dom.as_mut() {
+            if dom.set_title(text).is_ok() {
+                self.sync_build_title(text);
+                return Ok(());
+            }
+
+            // No title placeholder in the file. This used to fall through to the build model, which
+            // an opened deck never writes — so titling a slide reported success and changed nothing.
+            // A blank slide added and then titled kept the name the interface gave it, and the User
+            // was told the title had been set. Put a real text box in the file instead, where the
+            // title belongs.
+            let placed = dom.add_text_box(text, x, y, cx, cy);
             self.sync_build_title(text);
-            return Ok(());
+            return placed.map(|_| ()).map_err(Into::into);
         }
         self.sync_build_title(text);
         Ok(())
