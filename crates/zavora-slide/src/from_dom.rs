@@ -103,15 +103,43 @@ fn placeholder_of(shape: &Element) -> Option<(String, Option<u32>)> {
     Some((kind, index))
 }
 
-/// A solid fill's colour, where the shape states one outright.
-fn solid_fill(shape: &Element) -> Option<Color> {
-    let fill = shape.find_descendant(b"solidFill")?;
-    let value = fill.children_named(b"srgbClr").next()?.attr(b"val")?;
-    Color::from_hex(std::str::from_utf8(value).ok()?)
+/// The colour a `solidFill` states: a hex value, or a name from the theme.
+///
+/// Nearly half the colours in a real deck are named rather than stated. An unresolved name used to
+/// come out black, which is how a white title on a dark band became unreadable.
+fn colour_in(fill: &Element, theme: &dyn Fn(&str) -> Option<Color>) -> Option<Color> {
+    if let Some(value) = fill
+        .children_named(b"srgbClr")
+        .next()
+        .and_then(|colour| colour.attr(b"val"))
+        && let Some(colour) = Color::from_hex(std::str::from_utf8(value).ok()?)
+    {
+        return Some(colour);
+    }
+    let named = fill
+        .children_named(b"schemeClr")
+        .next()
+        .and_then(|colour| colour.attr(b"val"))
+        .and_then(|value| std::str::from_utf8(value).ok())?;
+    theme(named)
+}
+
+/// The fill of the shape itself, from its own properties and nowhere else.
+///
+/// This looked anywhere inside the shape for a colour, and a shape contains its text — so a plain
+/// text box with dark words was drawn as a dark box, and the words disappeared into it. A real deck
+/// grew a black band across the top of nine slides that way. A shape's fill is stated in its own
+/// `spPr`, and `noFill` there means what it says.
+fn body_fill(shape: &Element, theme: &dyn Fn(&str) -> Option<Color>) -> Option<Color> {
+    let properties = shape.children_named(b"spPr").next()?;
+    if properties.children_named(b"noFill").next().is_some() {
+        return None;
+    }
+    colour_in(properties.children_named(b"solidFill").next()?, theme)
 }
 
 /// The lines of text in a shape, with the size and weight each is set in.
-fn lines_of(shape: &Element) -> Vec<TextLine> {
+fn lines_of(shape: &Element, theme: &dyn Fn(&str) -> Option<Color>) -> Vec<TextLine> {
     let Some(body) = shape.find_descendant(b"txBody") else {
         return Vec::new();
     };
@@ -137,7 +165,9 @@ fn lines_of(shape: &Element) -> Vec<TextLine> {
                 .and_then(|rpr| rpr.attr(b"b"))
                 .map(|value| value == b"1")
                 .unwrap_or(false);
-            let colour = properties.and_then(solid_fill);
+            let colour = properties
+                .and_then(|rpr| rpr.children_named(b"solidFill").next())
+                .and_then(|fill| colour_in(fill, theme));
 
             TextLine {
                 text,
@@ -151,6 +181,33 @@ fn lines_of(shape: &Element) -> Vec<TextLine> {
         })
         .filter(|line| !line.text.is_empty())
         .collect()
+}
+
+/// The line a shape is drawn with: its colour and how thick, where the shape says.
+///
+/// A connector that states no line is still drawn, in the dark grey a connector is drawn in when
+/// nothing says otherwise — a line nobody can see is the same as no line, and the file put one there
+/// deliberately.
+fn line_of(shape: &Element, theme: &dyn Fn(&str) -> Option<Color>) -> zavora_slide_layout::Outline {
+    let line = shape.find_descendant(b"ln");
+    let colour = line
+        .and_then(|line| line.children_named(b"solidFill").next())
+        .and_then(|fill| colour_in(fill, theme))
+        .unwrap_or(Color::from_hex("595959").unwrap_or(Color::BLACK));
+    // Stated in EMU; a point is 12,700 of them. Thinner than three quarters of a point disappears
+    // on a screen, so that is the floor.
+    let width_pt = line
+        .and_then(|line| line.attr(b"w"))
+        .and_then(|value| std::str::from_utf8(value).ok())
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .map(|emu| emu / 12_700.0)
+        .unwrap_or(1.0)
+        .max(0.75);
+    zavora_slide_layout::Outline {
+        color: colour,
+        width_pt,
+        dash: zavora_slide_layout::DashStyle::Solid,
+    }
 }
 
 /// A table's column widths and row heights, in the units the slide states them in.
@@ -182,7 +239,13 @@ fn table_grid(table: &Element) -> (Vec<i64>, Vec<i64>) {
 /// Every cell is drawn in the same order the table states, so a click on a cell can still be traced
 /// back to the frame it belongs to. A header row is filled where the table says to fill it and left
 /// alone where it does not — a table drawn with invented shading is a different table.
-fn push_table(scene: &mut Scene, table: &Element, frame: Rect, source: Option<ItemSource>) -> bool {
+fn push_table(
+    scene: &mut Scene,
+    table: &Element,
+    frame: Rect,
+    source: Option<ItemSource>,
+    theme: &dyn Fn(&str) -> Option<Color>,
+) -> bool {
     let (columns, rows) = table_grid(table);
     if columns.is_empty() {
         return false;
@@ -225,7 +288,10 @@ fn push_table(scene: &mut Scene, table: &Element, frame: Rect, source: Option<It
             scene.push(
                 Item::Rect {
                     rect,
-                    fill: cell.find_descendant(b"tcPr").and_then(solid_fill),
+                    fill: cell
+                        .find_descendant(b"tcPr")
+                        .and_then(|properties| properties.children_named(b"solidFill").next())
+                        .and_then(|fill| colour_in(fill, theme)),
                     // Half a point of grey: enough to see the grid, not enough to become the
                     // loudest thing on the slide.
                     outline: Some((Color::from_hex("D0CFCB").unwrap_or(Color::BLACK), 0.5)),
@@ -233,7 +299,7 @@ fn push_table(scene: &mut Scene, table: &Element, frame: Rect, source: Option<It
                 source,
             );
 
-            let lines = lines_of(cell);
+            let lines = lines_of(cell, theme);
             if !lines.is_empty() {
                 scene.push(
                     Item::Text {
@@ -497,6 +563,7 @@ pub fn scene_from_dom(
     height: i64,
     images: &dyn Fn(&str) -> Option<Vec<u8>>,
     layout_box: &dyn Fn(&str, Option<u32>) -> Option<Rect>,
+    theme: &dyn Fn(&str) -> Option<Color>,
 ) -> Scene {
     let mut scene = Scene::new(width, height);
 
@@ -518,12 +585,33 @@ pub fn scene_from_dom(
         let Some(rect) = rect else { continue };
 
         match name {
+            // A connector, or a shape whose whole substance is its line: an arrow between two
+            // boxes, a rule under a heading. It has an outline and no fill, so the branch that
+            // draws a filled body drew nothing at all and the line was simply missing.
+            b"cxnSp" => {
+                let preset = shape
+                    .find_descendant(b"prstGeom")
+                    .and_then(|geometry| geometry.attr(b"prst"))
+                    .and_then(|value| std::str::from_utf8(value).ok())
+                    .unwrap_or("line")
+                    .to_string();
+                scene.push(
+                    Item::Shape {
+                        rect,
+                        preset: Some(preset),
+                        fill: zavora_slide_layout::ShapeFill::None,
+                        outline: Some(line_of(shape, theme)),
+                        rotation_deg: 0.0,
+                    },
+                    source,
+                );
+            }
             // A table, a chart or another drawing held in a frame. A frame holds a whole object
             // rather than being one, so what it holds decides what is drawn — and until now nothing
             // was: a slide whose content was a table drew an empty box.
             b"graphicFrame" => {
                 if let Some(table) = shape.find_descendant(b"tbl") {
-                    push_table(&mut scene, table, rect, source);
+                    push_table(&mut scene, table, rect, source, theme);
                 } else if let Some(reference) = shape
                     .find_descendant(b"chart")
                     .and_then(|chart| chart.attr(b"r:id").or_else(|| chart.attr(b"id")))
@@ -559,7 +647,7 @@ pub fn scene_from_dom(
                 // A filled or outlined body, where the shape has one. A placeholder usually does
                 // not, and drawing a box behind every one of them would put grey rectangles over a
                 // deck that has none.
-                if let Some(fill) = solid_fill(shape) {
+                if let Some(fill) = body_fill(shape, theme) {
                     scene.push(
                         Item::Rect {
                             rect,
@@ -570,7 +658,7 @@ pub fn scene_from_dom(
                     );
                 }
 
-                let lines = lines_of(shape);
+                let lines = lines_of(shape, theme);
                 if !lines.is_empty() {
                     let is_title = placeholder_of(shape)
                         .is_some_and(|(kind, _)| kind == "title" || kind == "ctrTitle");

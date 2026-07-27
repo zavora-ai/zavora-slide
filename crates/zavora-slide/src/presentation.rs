@@ -162,6 +162,30 @@ impl Presentation {
                         if let Some(bytes) = pkg.get_part(&layout_path) {
                             data.layout_boxes.extend(placeholder_boxes(bytes));
                         }
+
+                        // The theme the master points at, for the colours a slide names rather than
+                        // states.
+                        if let Some(layout_rels) = pkg.get_part_rels(&layout_path)
+                            && let Some(master_rel) =
+                                layout_rels.get_by_type(rel_types::SLIDE_MASTER)
+                        {
+                            let master_path = normalize_part_path(&OpcPackage::resolve_rel_target(
+                                &layout_path,
+                                &master_rel.target,
+                            ));
+                            if let Some(master_rels) = pkg.get_part_rels(&master_path)
+                                && let Some(theme_rel) = master_rels.get_by_type(rel_types::THEME)
+                            {
+                                let theme_path =
+                                    normalize_part_path(&OpcPackage::resolve_rel_target(
+                                        &master_path,
+                                        &theme_rel.target,
+                                    ));
+                                if let Some(bytes) = pkg.get_part(&theme_path) {
+                                    data.theme_colours = theme_colours(bytes);
+                                }
+                            }
+                        }
                     }
 
                     // The charts this slide points at, kept the same way and for the same reason: a
@@ -1235,4 +1259,59 @@ fn collect_named<'a>(
         }
         collect_named(child, local, found);
     }
+}
+
+/// The theme's colour scheme, by the names a slide uses for them.
+///
+/// A slide says `schemeClr val="accent1"` far more often than it says a hex value, and it also uses
+/// the older pair of names — `bg1` and `tx1` mean the first light and dark colours — so both are
+/// recorded. A name that cannot be resolved leaves the drawing to fall back rather than guess.
+fn theme_colours(xml: &[u8]) -> std::collections::HashMap<String, String> {
+    let mut colours = std::collections::HashMap::new();
+    let Ok(dom) = zavora_slide_oxml::Document::parse(xml) else {
+        return colours;
+    };
+    let Some(root) = dom.root() else {
+        return colours;
+    };
+    let Some(scheme) = root.find_descendant(b"clrScheme") else {
+        return colours;
+    };
+
+    for entry in scheme.child_elements() {
+        let name = String::from_utf8_lossy(entry.local_name()).to_string();
+        // Stated either outright or as one of the window colours; both carry a hex value.
+        let hex = entry
+            .children_named(b"srgbClr")
+            .next()
+            .and_then(|colour| colour.attr(b"val"))
+            .or_else(|| {
+                entry
+                    .children_named(b"sysClr")
+                    .next()
+                    .and_then(|colour| colour.attr(b"lastClr"))
+            })
+            .and_then(|value| std::str::from_utf8(value).ok())
+            .map(str::to_string);
+        if let Some(hex) = hex {
+            colours.insert(name.clone(), hex.clone());
+            // The older names for the same four: background and text, light and dark.
+            match name.as_str() {
+                "lt1" => {
+                    colours.insert("bg1".into(), hex.clone());
+                }
+                "lt2" => {
+                    colours.insert("bg2".into(), hex.clone());
+                }
+                "dk1" => {
+                    colours.insert("tx1".into(), hex.clone());
+                }
+                "dk2" => {
+                    colours.insert("tx2".into(), hex);
+                }
+                _ => {}
+            }
+        }
+    }
+    colours
 }

@@ -277,3 +277,77 @@ fn the_layout_under_test_states_that_box() {
         "the layout does not state the box the other test asserts"
     );
 }
+
+/// A text box is not a filled box.
+///
+/// The fill was read from anywhere inside the shape, and a shape contains its text — so a plain text
+/// box with dark words was drawn as a dark box and the words vanished into it. On a real investor
+/// deck that put a black band across the top of nine slides with the title hidden behind it.
+#[test]
+fn a_text_box_with_dark_words_is_not_drawn_as_a_dark_box() {
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let deck = Presentation::open(corpus.join("text_box_deck.pptx")).unwrap();
+    let scene = deck.slide(0).unwrap().scene();
+
+    let filled = scene
+        .items
+        .iter()
+        .filter(|item| matches!(item, zavora_slide_layout::Item::Rect { fill: Some(_), .. }))
+        .count();
+    assert_eq!(
+        filled, 0,
+        "a text box that states no fill was drawn as {filled} filled box(es)"
+    );
+    assert!(
+        scene
+            .items
+            .iter()
+            .any(|item| matches!(item, zavora_slide_layout::Item::Text { .. })),
+        "the words are not drawn at all"
+    );
+}
+
+/// The deck under test really does hold a text box with a stated text colour and no fill.
+#[test]
+fn the_text_box_deck_states_a_colour_and_no_fill() {
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let bytes = std::fs::read(corpus.join("text_box_deck.pptx")).unwrap();
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+    let mut xml = String::new();
+    std::io::Read::read_to_string(&mut zip.by_name("ppt/slides/slide1.xml").unwrap(), &mut xml)
+        .unwrap();
+    assert!(xml.contains("noFill"), "the fixture states no noFill");
+    assert!(
+        xml.contains("solidFill"),
+        "the fixture has no stated colour, so nothing could be mistaken for a fill"
+    );
+}
+
+/// A colour the deck names is drawn in the colour the theme gives it.
+///
+/// Nearly half the colours in a real deck are named — `accent1`, `lt1` — rather than stated as hex.
+/// An unresolved name came out black, which is how a white title on a dark band became unreadable.
+#[test]
+fn a_named_colour_comes_from_the_theme() {
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let deck = Presentation::open(corpus.join("text_box_deck.pptx")).unwrap();
+
+    // Every drawn word on the deck. If a name were unresolved, the colour would be pure black.
+    let mut names_resolved = 0;
+    for at in 0..deck.slide_count() {
+        for item in &deck.slide(at).unwrap().scene().items {
+            if let zavora_slide_layout::Item::Text { lines, .. } = item {
+                for line in lines {
+                    let colour = line.color;
+                    if (colour.r, colour.g, colour.b) != (0, 0, 0) {
+                        names_resolved += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        names_resolved > 0,
+        "every drawn line came out black, so no colour was resolved at all"
+    );
+}

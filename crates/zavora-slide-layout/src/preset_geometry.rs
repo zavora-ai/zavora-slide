@@ -31,6 +31,13 @@ pub fn bbox_rect_path(x: f64, y: f64, w: f64, h: f64) -> String {
 fn unit_path_for(name: &str) -> Option<&'static str> {
     let path = match name {
         "rect" => "M0,0 L1,0 L1,1 L0,1 Z",
+        // A line, and the straight connector that is one. Corner to corner of its own box, which is
+        // how a line states its direction in this format: the box carries the ends, and flipH or
+        // flipV on the box says which corner is which. Not closed — a closed line is a triangle.
+        "line" | "straightConnector1" => "M0,0 L1,1",
+        // An elbow. Out from the start, across, and in to the end.
+        "bentConnector3" => "M0,0 L0.5,0 L0.5,1 L1,1",
+        "bentConnector2" => "M0,0 L1,0 L1,1",
         "roundRect" => {
             // Corner radius ~16.67% of the shorter side
             "M0.167,0 L0.833,0 Q1,0 1,0.167 L1,0.833 Q1,1 0.833,1 L0.167,1 Q0,1 0,0.833 L0,0.167 Q0,0 0.167,0 Z"

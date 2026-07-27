@@ -311,6 +311,12 @@ pub struct SlideData {
     /// a title where a title usually goes, which is right often enough to look plausible and wrong
     /// often enough to matter. Taken when the package is open, because it is not kept.
     pub(crate) layout_boxes: std::collections::HashMap<String, (i64, i64, i64, i64)>,
+    /// The theme's colours by the names a slide calls them: "accent1", "lt1", "tx2".
+    ///
+    /// Nearly half the colours in a real deck are stated this way rather than as a hex value, and a
+    /// colour that is not resolved is drawn black — which is how a white title on a dark band came
+    /// out black on black, and why nobody could read it.
+    pub(crate) theme_colours: std::collections::HashMap<String, String>,
     /// Editable DOM of the notes-slide part when opened from an existing deck.
     /// Notes edits mutate this tree in place; save serializes only the notes part
     /// (surgical, no full rebuild). `None` when the slide has no notes part.
@@ -350,6 +356,7 @@ impl SlideData {
             images: Vec::new(),
             media: std::collections::HashMap::new(),
             layout_boxes: std::collections::HashMap::new(),
+            theme_colours: std::collections::HashMap::new(),
             tables: Vec::new(),
             notes: None,
             background: None,
@@ -466,6 +473,11 @@ impl SlideData {
                                 h: *h,
                             })
                     })
+                },
+                &|named| {
+                    self.theme_colours
+                        .get(named)
+                        .and_then(|hex| zavora_slide_layout::Color::from_hex(hex))
                 },
             );
             if !scene.items.is_empty() {
