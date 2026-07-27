@@ -278,6 +278,36 @@ fn the_layout_under_test_states_that_box() {
     );
 }
 
+/// A deck holding one plain text box whose words are dark.
+///
+/// Written by the library rather than kept as a file, because the deck that exposed this fault is
+/// 117MB of photographs and the fault needs none of them: a text box that states no fill of its own
+/// and a run that states a colour is the whole reproduction.
+fn deck_with_a_text_box() -> Vec<u8> {
+    let mut deck = Presentation::new();
+    let at = deck.add_slide(Layout::Blank);
+    {
+        let mut slide = deck.slide_mut(at).unwrap();
+        let shape = slide.add_text_box(
+            "Revenue by region",
+            Emu::inches(1.0),
+            Emu::inches(1.0),
+            Emu::inches(6.0),
+            Emu::inches(1.0),
+        );
+        if let Some(run) = shape
+            .body
+            .paragraphs
+            .first_mut()
+            .and_then(|paragraph| paragraph.runs.first_mut())
+        {
+            run.props.color = Some("404040".into());
+            run.props.size_pt = Some(32.0);
+        }
+    }
+    deck.save_to_buffer().unwrap()
+}
+
 /// A text box is not a filled box.
 ///
 /// The fill was read from anywhere inside the shape, and a shape contains its text — so a plain text
@@ -285,8 +315,7 @@ fn the_layout_under_test_states_that_box() {
 /// deck that put a black band across the top of nine slides with the title hidden behind it.
 #[test]
 fn a_text_box_with_dark_words_is_not_drawn_as_a_dark_box() {
-    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
-    let deck = Presentation::open(corpus.join("text_box_deck.pptx")).unwrap();
+    let deck = Presentation::open_from_bytes(&deck_with_a_text_box()).unwrap();
     let scene = deck.slide(0).unwrap().scene();
 
     let filled = scene
@@ -296,7 +325,7 @@ fn a_text_box_with_dark_words_is_not_drawn_as_a_dark_box() {
         .count();
     assert_eq!(
         filled, 0,
-        "a text box that states no fill was drawn as {filled} filled box(es)"
+        "a text box that states no fill of its own was drawn as {filled} filled box(es)"
     );
     assert!(
         scene
@@ -307,49 +336,78 @@ fn a_text_box_with_dark_words_is_not_drawn_as_a_dark_box() {
     );
 }
 
-/// The deck under test really does hold a text box with a stated text colour and no fill.
+/// The deck under test really does state a colour inside the shape and none on the shape.
+///
+/// Without this the test above passes on a deck that states no colour anywhere, where there is
+/// nothing to be mistaken for a fill.
 #[test]
-fn the_text_box_deck_states_a_colour_and_no_fill() {
-    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
-    let bytes = std::fs::read(corpus.join("text_box_deck.pptx")).unwrap();
-    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+fn the_text_box_deck_states_a_colour_inside_and_none_outside() {
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(deck_with_a_text_box())).unwrap();
     let mut xml = String::new();
     std::io::Read::read_to_string(&mut zip.by_name("ppt/slides/slide1.xml").unwrap(), &mut xml)
         .unwrap();
-    assert!(xml.contains("noFill"), "the fixture states no noFill");
     assert!(
         xml.contains("solidFill"),
-        "the fixture has no stated colour, so nothing could be mistaken for a fill"
+        "the fixture states no colour, so nothing could be mistaken for a fill"
+    );
+    let shape_properties = xml
+        .split("<p:spPr")
+        .nth(1)
+        .and_then(|rest| rest.split("</p:spPr>").next())
+        .unwrap_or("");
+    assert!(
+        !shape_properties.contains("solidFill"),
+        "the shape states its own fill, so this is not the case that failed"
     );
 }
 
-/// A colour the deck names is drawn in the colour the theme gives it.
+/// A colour the text states is the colour it is drawn in.
 ///
-/// Nearly half the colours in a real deck are named — `accent1`, `lt1` — rather than stated as hex.
-/// An unresolved name came out black, which is how a white title on a dark band became unreadable.
+/// Nearly half the colours in a real deck are named — `accent1`, `lt1` — rather than stated as hex,
+/// and every name resolved to black before the theme was read. This holds the simpler half: a stated
+/// colour reaches the drawing rather than being flattened.
 #[test]
-fn a_named_colour_comes_from_the_theme() {
-    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
-    let deck = Presentation::open(corpus.join("text_box_deck.pptx")).unwrap();
-
-    // Every drawn word on the deck. If a name were unresolved, the colour would be pure black.
-    let mut names_resolved = 0;
-    for at in 0..deck.slide_count() {
-        for item in &deck.slide(at).unwrap().scene().items {
-            if let zavora_slide_layout::Item::Text { lines, .. } = item {
-                for line in lines {
-                    let colour = line.color;
-                    if (colour.r, colour.g, colour.b) != (0, 0, 0) {
-                        names_resolved += 1;
-                    }
-                }
-            }
-        }
-    }
+fn a_stated_colour_reaches_the_drawing() {
+    let deck = Presentation::open_from_bytes(&deck_with_a_text_box()).unwrap();
+    let drawn: Vec<(u8, u8, u8)> = deck
+        .slide(0)
+        .unwrap()
+        .scene()
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            zavora_slide_layout::Item::Text { lines, .. } => lines
+                .first()
+                .map(|line| (line.color.r, line.color.g, line.color.b)),
+            _ => None,
+        })
+        .collect();
     assert!(
-        names_resolved > 0,
-        "every drawn line came out black, so no colour was resolved at all"
+        drawn.contains(&(0x40, 0x40, 0x40)),
+        "the stated colour is not what was drawn: {drawn:?}"
     );
+}
+
+/// The theme's own colours are read, so a named colour has something to resolve to.
+#[test]
+fn the_theme_is_read_when_a_deck_opens() {
+    let corpus = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/corpus");
+    let deck = Presentation::open(corpus.join("deck_with_a_chart.pptx")).unwrap();
+
+    // Nothing on this slide is drawn pure black by accident: every drawn line has a colour that came
+    // from somewhere in the file.
+    let lines: usize = (0..deck.slide_count())
+        .map(|at| {
+            deck.slide(at)
+                .unwrap()
+                .scene()
+                .items
+                .iter()
+                .filter(|item| matches!(item, zavora_slide_layout::Item::Text { .. }))
+                .count()
+        })
+        .sum();
+    assert!(lines > 0, "nothing is drawn, so nothing was coloured");
 }
 
 /// Titling a slide that has no title placeholder writes the title to the file.
