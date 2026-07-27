@@ -52,9 +52,13 @@ fn a_slide_draws_more_than_one_thing() {
         .items
         .iter()
         .filter_map(|item| match item {
-            zavora_slide::Item::Text { lines, .. } => {
-                Some(lines.iter().map(|l| l.text.clone()).collect::<Vec<_>>().join(" | "))
-            }
+            zavora_slide::Item::Text { lines, .. } => Some(
+                lines
+                    .iter()
+                    .map(|l| l.text.clone())
+                    .collect::<Vec<_>>()
+                    .join(" | "),
+            ),
             _ => None,
         })
         .collect();

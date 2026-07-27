@@ -135,6 +135,21 @@ impl Presentation {
                         }
                     }
 
+                    // The charts this slide points at, kept the same way and for the same reason: a
+                    // slide whose content is a chart drew an empty frame. The chart's own XML is
+                    // what says where the bars go, so it is taken now while the package is open.
+                    if let Some(slide_rels) = pkg.get_part_rels(part_path) {
+                        for rel in slide_rels.get_all_by_type(rel_types::CHART) {
+                            let chart_path = normalize_part_path(&OpcPackage::resolve_rel_target(
+                                part_path,
+                                &rel.target,
+                            ));
+                            if let Some(bytes) = pkg.get_part(&chart_path) {
+                                data.media.insert(rel.id.clone(), bytes.to_vec());
+                            }
+                        }
+                    }
+
                     // Parse the notes-slide part if the slide has one (via its rels).
                     if let Some(slide_rels) = pkg.get_part_rels(part_path)
                         && let Some(notes_rel) = slide_rels.get_by_type(rel_types::NOTES_SLIDE)
