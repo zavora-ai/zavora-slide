@@ -1,6 +1,6 @@
 //! PresentationML + shared DrawingML typed models (parse/serialize).
 //!
-//! Phase 0 models `ppt/presentation.xml` (slide-id list, master-id list, slide
+//! The core model covers `ppt/presentation.xml` (slide-id list, master-id list, slide
 //! size) with verbatim capture of unmodeled children. The heavyweight parts
 //! (`slideMaster`, `slideLayout`, `slide`, `theme`) are carried byte-for-byte via
 //! [`RawPart`] until deeper typing lands in task 3.1.
