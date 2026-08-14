@@ -1,6 +1,7 @@
 //! Semantic notes-slide model over the lossless [`Document`] tree.
 //!
-//! Mirrors [`SlideDom`] but for `ppt/notesSlides/notesSlideN.xml`. Edits mutate
+//! Mirrors [`SlideDom`](crate::slide_dom::SlideDom) but for
+//! `ppt/notesSlides/notesSlideN.xml`. Edits mutate
 //! the body placeholder's text in place; every other byte of the notes part is
 //! preserved (surgical edit, no full rebuild).
 

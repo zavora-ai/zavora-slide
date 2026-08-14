@@ -154,7 +154,7 @@ faithfully but no edit/author/render)
 |---|---|---|---|
 | Language | Python | Rust | |
 | WASM / browser-native | ❌ | 🟡 | zavora-slide wasm bindings |
-| AI-agent tool surface (MCP) | ❌ | ✅ | 27 tools |
+| AI-agent tool surface (MCP) | ❌ | ✅ | 71 tools |
 | CLI | ❌ | ✅ | `zslide` inspect/text/convert |
 | Maturity / adoption / docs | ✅ (10+ yrs) | 🟡 (early) | |
 
@@ -191,7 +191,7 @@ with embedded workbook + data editing).
 - **Visual QA** — deterministic layout report, WCAG contrast checks, render-diff.
 - **Design system** — curated palettes, font pairings, layout patterns, design lint.
 - **Rich extraction** — structured JSON outline + Markdown ≥ markitdown.
-- **WASM, MCP agent tools (27 tools), CLI, parameterized deck templates.**
+- **WASM, MCP agent tools (71 tools), CLI, parameterized deck templates.**
 
 **Net:** All python-pptx authoring gaps are closed. The remaining deltas are chart type
 breadth (9 vs ~129) and autoshape count (191 vs 239) — breadth, not capability. The

@@ -3,7 +3,7 @@
 //! A created slide owns a list of DrawingML shapes; serialization wraps them in
 //! the canonical blank-slide shell (matching the part PowerPoint accepts). Title
 //! and body placeholders are placed with explicit geometry derived from the
-//! slide size, so they render regardless of the (single, Phase 0) layout —
+//! slide size, so they render regardless of the generated deck's single layout —
 //! per-layout placeholder geometry resolution is a later (layout) phase.
 
 use zavora_slide_oxml::{Paragraph, Run, RunProps, Shape, TextBody};
@@ -436,7 +436,7 @@ impl SlideData {
         self.layout_boxes.clone()
     }
 
-    /// Build a render-ready [`Scene`] from this slide's content.
+    /// Build a render-ready [`Scene`](zavora_slide_layout::Scene) from this slide's content.
     /// The scene to draw.
     ///
     /// From the slide's own shape tree where there is one — that is what the file says, shape by

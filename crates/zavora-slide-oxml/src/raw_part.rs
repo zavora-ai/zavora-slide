@@ -1,7 +1,7 @@
 //! Byte-preserving wrapper for parts the engine does not yet deeply model
 //! (`slideMaster`, `slideLayout`, `slide`, `theme`).
 //!
-//! Phase 0 carries these verbatim so packages round-trip losslessly. Deep typing
+//! These parts remain verbatim so packages round-trip losslessly. Deep typing
 //! of the slide body arrives in task 3.1.
 
 /// A presentation part held as raw XML bytes.

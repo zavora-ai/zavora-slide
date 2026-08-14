@@ -309,7 +309,7 @@ impl Presentation {
             .collect();
     }
 
-    /// Append a blank slide bound to the (single, Phase 0) layout. Returns the
+    /// Append a blank slide bound to the generated deck's layout. Returns the
     /// new slide's 0-based index. `_layout` is accepted for API stability;
     /// per-layout placeholder geometry lands in later phases.
     pub fn add_slide(&mut self, layout: Layout) -> usize {
@@ -1118,6 +1118,7 @@ fn normalize_part_path(path: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
 
