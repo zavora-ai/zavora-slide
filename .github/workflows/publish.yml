@@ -3,6 +3,7 @@ name: Publish
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,6 +17,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.94.1"
+          components: clippy
           targets: wasm32-unknown-unknown
       - run: cargo test --workspace --all-targets
       - run: cargo check --manifest-path crates/zavora-slide-wasm/Cargo.toml --target wasm32-unknown-unknown
@@ -23,6 +25,7 @@ jobs:
         run: ./scripts/publish-workspace.sh
 
   release:
+    if: github.event_name == 'push'
     needs: publish
     runs-on: ubuntu-latest
     permissions:
