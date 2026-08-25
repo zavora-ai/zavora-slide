@@ -20,12 +20,12 @@ for package in "${packages[@]}"; do
     echo "${package} ${version} is already published"
     continue
   fi
-  cargo publish --locked --no-verify -p "${package}"
+  cargo publish --locked -p "${package}"
 done
 
 wasm_manifest=crates/zavora-slide-wasm/Cargo.toml
 if ! curl --fail --silent --show-error \
   --user-agent "zavora-slide-release/${version}" \
   "https://crates.io/api/v1/crates/zavora-slide-wasm/${version}" >/dev/null 2>&1; then
-  cargo publish --locked --no-verify --manifest-path "$wasm_manifest"
+  cargo publish --locked --manifest-path "$wasm_manifest"
 fi

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.1] - 2026-08-25
+
+### Security
+
+- Upgraded `quick-xml` to 0.41 to close the namespace-allocation and duplicate-
+  attribute denial-of-service advisories.
+- Preserved entity references in DrawingML text under the parser's hardened
+  event model.
+
 ## [0.1.0] - 2026-08-14
 
 ### Added

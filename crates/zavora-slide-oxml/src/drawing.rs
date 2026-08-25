@@ -220,8 +220,11 @@ impl TextBody {
                     _ => {}
                 },
                 Event::Text(t) if in_t => {
-                    let s = t.unescape()?;
+                    let s = t.decode().map_err(quick_xml::Error::from)?;
                     text.push_str(&s);
+                }
+                Event::GeneralRef(reference) if in_t => {
+                    text.push_str(&decode_reference(&reference));
                 }
                 Event::End(e) => match local(e.name().as_ref()) {
                     b"t" => in_t = false,
@@ -246,6 +249,22 @@ impl TextBody {
             buf.clear();
         }
         Ok(TextBody { paragraphs: paras })
+    }
+}
+
+fn decode_reference(reference: &quick_xml::events::BytesRef<'_>) -> String {
+    if let Ok(Some(character)) = reference.resolve_char_ref() {
+        return character.to_string();
+    }
+
+    let name = reference.decode().unwrap_or_default();
+    match name.as_ref() {
+        "lt" => "<".to_string(),
+        "gt" => ">".to_string(),
+        "amp" => "&".to_string(),
+        "apos" => "'".to_string(),
+        "quot" => "\"".to_string(),
+        other => format!("&{other};"),
     }
 }
 
