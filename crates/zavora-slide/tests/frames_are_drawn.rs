@@ -157,7 +157,11 @@ fn the_deck_under_test_holds_a_chart() {
     let bytes = std::fs::read(deck_with_a_chart()).unwrap();
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
     let parts: Vec<String> = (0..zip.len())
-        .filter_map(|at| zip.by_index(at).ok().map(|part| part.name().to_string()))
+        .filter_map(|at| {
+            zip.by_index(at)
+                .ok()
+                .map(|part| part.name().unwrap().into_owned())
+        })
         .collect();
     assert!(
         parts.iter().any(|part| part.contains("charts/chart")),

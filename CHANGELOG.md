@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Security
+
+- Upgrade `zip` from 8.1 to 9.1. `zip` releases before 9.0.5 are affected by
+  CVE-2026-115905 (critical).
+
+### Changed
+
+- `zip` 9 made `ZipFile::name` fallible. Opening a package now returns
+  `OpcError::Zip` when an entry's name cannot be decoded.
+
 ## [0.1.1] - 2026-08-25
 
 ### Security
