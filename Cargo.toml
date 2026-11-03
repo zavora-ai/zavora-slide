@@ -36,7 +36,7 @@ zavora-slide-pdf = { path = "crates/zavora-slide-pdf", version = "0.1.1" }
 zavora-slide-xlsx = { path = "crates/zavora-slide-xlsx", version = "0.1.1" }
 
 # External dependencies
-zip = { version = "8.1", default-features = false, features = ["deflate"] }
+zip = { version = "9.1", default-features = false, features = ["deflate"] }
 quick-xml = "0.41"
 thiserror = "2"
 sha2 = "0.10"

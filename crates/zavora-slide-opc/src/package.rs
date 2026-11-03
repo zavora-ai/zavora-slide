@@ -52,7 +52,7 @@ impl OpcPackage {
             if entry.is_dir() {
                 continue;
             }
-            let name = entry.name().to_string();
+            let name = entry.name()?.into_owned();
             let mut data = Vec::new();
             entry.read_to_end(&mut data)?;
             raw_parts.insert(name, data);
